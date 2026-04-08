@@ -11,6 +11,10 @@
     "test:sdk": "pnpm --filter @pact-network/monitor test",
     "test:backend": "pnpm --filter @pact-network/backend test",
     "seed": "pnpm --filter @pact-network/backend seed",
-    "generate-key": "pnpm --filter @pact-network/backend generate-key"
+    "generate-key": "pnpm --filter @pact-network/backend generate-key",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "db:logs": "docker compose -f docker-compose.dev.yml logs -f postgres",
+    "db:reset": "docker compose -f docker-compose.dev.yml down -v && docker compose -f docker-compose.dev.yml up -d"
   }
 }
