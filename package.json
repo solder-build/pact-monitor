@@ -1,0 +1,11 @@
+{
+  "name": "pact-network",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:backend": "npm run dev -w packages/backend",
+    "dev:scorecard": "npm run dev -w packages/scorecard",
+    "build:sdk": "npm run build -w packages/sdk",
+    "build": "npm run build -w packages/sdk && npm run build -w packages/backend && npm run build -w packages/scorecard"
+  }
+}
