@@ -1,17 +1,16 @@
 {
   "name": "pact-network",
   "private": true,
-  "workspaces": ["packages/*"],
   "scripts": {
     "setup": "bash scripts/setup.sh",
-    "dev:backend": "npm run dev -w packages/backend",
-    "dev:scorecard": "npm run dev -w packages/scorecard",
-    "build:sdk": "npm run build -w packages/sdk",
-    "build": "npm run build -w packages/sdk && npm run build -w packages/backend && npm run build -w packages/scorecard",
-    "test": "npm run test:sdk && npm run test:backend",
-    "test:sdk": "cd packages/sdk && npx tsx --test src/*.test.ts",
-    "test:backend": "cd packages/backend && npx tsx --test src/**/*.test.ts",
-    "seed": "npm run seed -w packages/backend",
-    "generate-key": "npm run generate-key -w packages/backend"
+    "dev:backend": "pnpm --filter @pact-network/backend dev",
+    "dev:scorecard": "pnpm --filter @pact-network/scorecard dev",
+    "build:sdk": "pnpm --filter @pact-network/monitor build",
+    "build": "pnpm --filter @pact-network/monitor build && pnpm --filter @pact-network/backend build && pnpm --filter @pact-network/scorecard build",
+    "test": "pnpm run test:sdk && pnpm run test:backend",
+    "test:sdk": "pnpm --filter @pact-network/monitor test",
+    "test:backend": "pnpm --filter @pact-network/backend test",
+    "seed": "pnpm --filter @pact-network/backend seed",
+    "generate-key": "pnpm --filter @pact-network/backend generate-key"
   }
 }

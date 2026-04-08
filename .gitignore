@@ -6,3 +6,4 @@ dist/
 data/
 .superpowers/
 .worktrees/
+package-lock.json
