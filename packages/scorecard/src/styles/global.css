@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-bg text-neutral-200 font-sans antialiased;
+    margin: 0;
+  }
+
+  h1, h2, h3 {
+    @apply font-serif;
+  }
+}
