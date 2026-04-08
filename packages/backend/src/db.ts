@@ -6,7 +6,7 @@ import { dirname, join } from "path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://pact:pact@localhost:5432/pact",
+  connectionString: process.env.DATABASE_URL || "postgresql://pact:pact@localhost:5433/pact",
 });
 
 export async function initDb(): Promise<void> {
