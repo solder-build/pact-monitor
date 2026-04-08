@@ -5,40 +5,60 @@ Pact Network is a parametric micro-insurance system for AI agent API payments on
 ## Tech Stack
 
 - **Language:** TypeScript (all packages)
-- **Backend:** Hono (API server), SQLite (database)
-- **Scorecard:** Vite + React (SPA dashboard)
-- **SDK Storage:** JSON file (local on agent's machine)
+- **Backend:** Fastify (API server), PostgreSQL (database)
+- **Scorecard:** Vite + React + Tailwind CSS + Recharts (SPA dashboard)
+- **SDK:** Wraps fetch(), JSON file local storage, x402/MPP header extraction
+- **Deployment:** Docker Compose + Caddy (same-origin on pactnetwork.io)
 
 ## Monorepo Structure
 
 ```
-sdk/        — @pact-network/monitor: TypeScript SDK wrapping fetch() to monitor API reliability
-backend/    — @pact-network/backend: Hono API server aggregating monitoring data
-scorecard/  — @pact-network/scorecard: Vite+React dashboard showing provider reliability rankings
-docs/       — PRD and reference documents
+packages/
+  sdk/        — @pact-network/monitor: TypeScript SDK wrapping fetch() to monitor API reliability
+  backend/    — @pact-network/backend: Fastify API server aggregating monitoring data
+  scorecard/  — @pact-network/scorecard: Vite+React dashboard showing provider reliability rankings
+deploy/       — Docker Compose + Caddyfile
+docs/         — PRD, design spec, implementation plan
 ```
 
 ## Design System
 
 - **Background:** #151311 (dark)
-- **Copper:** #B87333
-- **Burnt Sienna:** #C9553D
-- **Slate:** #5A6B7A
+- **Copper:** #B87333 (financial values, insurance rates)
+- **Burnt Sienna:** #C9553D (failures, violations, HIGH RISK)
+- **Slate:** #5A6B7A (healthy, RELIABLE states)
 - **Fonts:** Inria Serif (headlines), Inria Sans (body), JetBrains Mono (data)
 - **Aesthetic:** Brutalist — zero/minimal border radius, no gradients, no emojis in code or UI
 
 ## Build & Run
 
 ```bash
-# SDK
-cd sdk && npm install && npm run build
+# Install all workspace dependencies
+npm install
 
-# Backend
-cd backend && npm install && npm run dev
+# SDK
+cd packages/sdk && npm run build
+
+# Backend (needs PostgreSQL running)
+cd packages/backend && npm run dev
 
 # Scorecard
-cd scorecard && npm install && npm run dev
+cd packages/scorecard && npm run dev
+
+# Seed data
+cd packages/backend && npm run seed
+
+# Generate API key
+cd packages/backend && npm run generate-key <label>
 ```
+
+## API Endpoints
+
+- `POST /api/v1/records` — batch ingest call records (authenticated)
+- `GET /api/v1/providers` — list all providers ranked by insurance rate (public)
+- `GET /api/v1/providers/:id` — provider detail with percentiles and breakdown (public)
+- `GET /api/v1/providers/:id/timeseries` — failure rate over time (public)
+- `GET /health` — server health check
 
 ## Conventions
 
