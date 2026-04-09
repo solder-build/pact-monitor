@@ -13,7 +13,7 @@ await app.register(recordsRoutes);
 await app.register(providersRoutes);
 await app.register(monitorRoutes);
 
-const port = parseInt(process.env.PORT || "3000", 10);
+const port = parseInt(process.env.PORT || "3001", 10);
 
 try {
   await initDb();
