@@ -34,6 +34,28 @@ export interface TimeseriesData {
   data: TimeseriesPoint[];
 }
 
+export interface AnalyticsSummary {
+  total_sdk_requests: number;
+  total_claims: number;
+  total_claim_amount: number;
+  total_refund_amount: number;
+  claims_by_trigger: Record<string, number>;
+  unique_agents: number;
+  unique_providers: number;
+}
+
+export interface AnalyticsTimeseriesPoint {
+  bucket: string;
+  requests: number;
+  claims: number;
+  refund_amount: number;
+}
+
+export interface AnalyticsTimeseries {
+  granularity: "hourly" | "daily";
+  data: AnalyticsTimeseriesPoint[];
+}
+
 const BASE = "/api/v1";
 
 async function get<T>(path: string): Promise<T> {
@@ -47,4 +69,7 @@ export const api = {
   getProvider: (id: string) => get<ProviderDetail>(`/providers/${id}`),
   getTimeseries: (id: string, granularity = "hourly", days = 7) =>
     get<TimeseriesData>(`/providers/${id}/timeseries?granularity=${granularity}&days=${days}`),
+  getAnalyticsSummary: () => get<AnalyticsSummary>("/analytics/summary"),
+  getAnalyticsTimeseries: (granularity = "daily", days = 7) =>
+    get<AnalyticsTimeseries>(`/analytics/timeseries?granularity=${granularity}&days=${days}`),
 };
