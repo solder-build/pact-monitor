@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireApiKey } from "../middleware/auth.js";
 import { query, getOne } from "../db.js";
+import { maybeCreateClaim } from "../utils/claims.js";
 
 interface RecordInput {
   hostname: string;
@@ -56,13 +57,14 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
         const providerId = await findOrCreateProvider(rec.hostname);
         providerIds.add(providerId);
 
-        await query(
+        const insertResult = await query<{ id: string }>(
           `INSERT INTO call_records (
             provider_id, endpoint, timestamp, status_code, latency_ms,
             classification, payment_protocol, payment_amount, payment_asset,
             payment_network, payer_address, recipient_address, tx_hash,
             settlement_success, agent_id
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          RETURNING id`,
           [
             providerId, rec.endpoint, rec.timestamp, rec.status_code,
             rec.latency_ms, rec.classification, rec.payment_protocol ?? null,
@@ -72,6 +74,17 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
             rec.settlement_success ?? null, agentId,
           ],
         );
+
+        const callRecordId = insertResult.rows[0].id;
+
+        await maybeCreateClaim({
+          callRecordId,
+          providerId,
+          agentId,
+          classification: rec.classification,
+          paymentAmount: rec.payment_amount ?? null,
+        });
+
         accepted++;
       }
 

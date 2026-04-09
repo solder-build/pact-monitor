@@ -6,6 +6,8 @@ import { initDb, query, pool } from "../db.js";
 import { healthRoutes } from "./health.js";
 import { recordsRoutes } from "./records.js";
 import { providersRoutes } from "./providers.js";
+import { analyticsRoutes } from "./analytics.js";
+import { claimsRoutes } from "./claims.js";
 
 const TEST_API_KEY = `test-key-${randomUUID()}`;
 const TEST_KEY_HASH = createHash("sha256").update(TEST_API_KEY).digest("hex");
@@ -16,6 +18,8 @@ async function buildApp() {
   await app.register(healthRoutes);
   await app.register(recordsRoutes);
   await app.register(providersRoutes);
+  await app.register(analyticsRoutes);
+  await app.register(claimsRoutes);
   return app;
 }
 
@@ -117,6 +121,118 @@ describe("API integration tests", () => {
       await query("DELETE FROM call_records WHERE provider_id = $1", [providerId]);
       await query("DELETE FROM providers WHERE id = $1", [providerId]);
     });
+
+    it("creates a claim for failed records with payment", async () => {
+      const hostname = `claim-test-${randomUUID()}.example.com`;
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/records",
+        headers: { authorization: `Bearer ${TEST_API_KEY}` },
+        payload: {
+          records: [
+            {
+              hostname,
+              endpoint: "/v1/data",
+              timestamp: new Date().toISOString(),
+              status_code: 500,
+              latency_ms: 3000,
+              classification: "error",
+              payment_protocol: "x402",
+              payment_amount: 10000,
+              payment_asset: "USDC",
+              payment_network: "solana",
+            },
+          ],
+        },
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      const providerId = body.provider_ids[0];
+
+      const claimResult = await query(
+        "SELECT * FROM claims WHERE provider_id = $1",
+        [providerId],
+      );
+      assert.equal(claimResult.rows.length, 1);
+      const claim = claimResult.rows[0];
+      assert.equal(claim.trigger_type, "error");
+      assert.equal(claim.refund_pct, 100);
+      assert.equal(Number(claim.call_cost), 10000);
+      assert.equal(Number(claim.refund_amount), 10000);
+      assert.equal(claim.status, "simulated");
+
+      await query("DELETE FROM claims WHERE provider_id = $1", [providerId]);
+      await query("DELETE FROM call_records WHERE provider_id = $1", [providerId]);
+      await query("DELETE FROM providers WHERE id = $1", [providerId]);
+    });
+
+    it("does NOT create a claim for successful records with payment", async () => {
+      const hostname = `no-claim-${randomUUID()}.example.com`;
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/records",
+        headers: { authorization: `Bearer ${TEST_API_KEY}` },
+        payload: {
+          records: [
+            {
+              hostname,
+              endpoint: "/v1/data",
+              timestamp: new Date().toISOString(),
+              status_code: 200,
+              latency_ms: 100,
+              classification: "success",
+              payment_protocol: "x402",
+              payment_amount: 10000,
+            },
+          ],
+        },
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      const providerId = body.provider_ids[0];
+
+      const claimResult = await query(
+        "SELECT * FROM claims WHERE provider_id = $1",
+        [providerId],
+      );
+      assert.equal(claimResult.rows.length, 0);
+
+      await query("DELETE FROM call_records WHERE provider_id = $1", [providerId]);
+      await query("DELETE FROM providers WHERE id = $1", [providerId]);
+    });
+
+    it("does NOT create a claim for failed records without payment", async () => {
+      const hostname = `no-pay-${randomUUID()}.example.com`;
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/records",
+        headers: { authorization: `Bearer ${TEST_API_KEY}` },
+        payload: {
+          records: [
+            {
+              hostname,
+              endpoint: "/v1/data",
+              timestamp: new Date().toISOString(),
+              status_code: 500,
+              latency_ms: 3000,
+              classification: "error",
+            },
+          ],
+        },
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      const providerId = body.provider_ids[0];
+
+      const claimResult = await query(
+        "SELECT * FROM claims WHERE provider_id = $1",
+        [providerId],
+      );
+      assert.equal(claimResult.rows.length, 0);
+
+      await query("DELETE FROM call_records WHERE provider_id = $1", [providerId]);
+      await query("DELETE FROM providers WHERE id = $1", [providerId]);
+    });
   });
 
   describe("GET /api/v1/providers", () => {
@@ -147,6 +263,54 @@ describe("API integration tests", () => {
         url: `/api/v1/providers/${fakeId}/timeseries`,
       });
       assert.equal(res.statusCode, 404);
+    });
+  });
+
+  describe("GET /api/v1/analytics/summary", () => {
+    it("returns analytics summary with expected fields", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/v1/analytics/summary" });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.equal(typeof body.total_sdk_requests, "number");
+      assert.equal(typeof body.total_claims, "number");
+      assert.equal(typeof body.total_claim_amount, "number");
+      assert.equal(typeof body.total_refund_amount, "number");
+      assert.equal(typeof body.claims_by_trigger, "object");
+      assert.equal(typeof body.unique_agents, "number");
+      assert.equal(typeof body.unique_providers, "number");
+    });
+  });
+
+  describe("GET /api/v1/analytics/timeseries", () => {
+    it("returns timeseries data with expected structure", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/analytics/timeseries?granularity=daily&days=7",
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.equal(body.granularity, "daily");
+      assert.ok(Array.isArray(body.data));
+    });
+  });
+
+  describe("GET /api/v1/claims", () => {
+    it("returns an array", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/v1/claims" });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.ok(Array.isArray(body));
+    });
+
+    it("respects limit parameter", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/claims?limit=1",
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.ok(Array.isArray(body));
+      assert.ok(body.length <= 1);
     });
   });
 });

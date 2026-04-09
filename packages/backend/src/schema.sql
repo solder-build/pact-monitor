@@ -39,3 +39,24 @@ CREATE TABLE IF NOT EXISTS api_keys (
   label TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS claims (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  call_record_id  UUID NOT NULL REFERENCES call_records(id),
+  provider_id     UUID NOT NULL REFERENCES providers(id),
+  agent_id        TEXT,
+  policy_id       TEXT,
+  trigger_type    TEXT NOT NULL CHECK (trigger_type IN ('timeout', 'error', 'schema_mismatch', 'latency_sla')),
+  call_cost       BIGINT,
+  refund_pct      INTEGER NOT NULL,
+  refund_amount   BIGINT,
+  status          TEXT NOT NULL DEFAULT 'simulated' CHECK (status IN ('detected', 'simulated', 'submitted', 'settled')),
+  tx_hash         TEXT,
+  settlement_slot BIGINT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_claims_provider_id ON claims(provider_id);
+CREATE INDEX IF NOT EXISTS idx_claims_agent_id ON claims(agent_id);
+CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
+CREATE INDEX IF NOT EXISTS idx_claims_created_at ON claims(created_at);

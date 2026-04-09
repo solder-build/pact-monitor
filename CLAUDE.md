@@ -59,6 +59,9 @@ cd packages/backend && npm run generate-key <label>
 - `GET /api/v1/providers/:id` — provider detail with percentiles and breakdown (public)
 - `GET /api/v1/providers/:id/timeseries` — failure rate over time (public)
 - `GET /health` — server health check
+- `GET /api/v1/analytics/summary` — network-wide aggregate stats (public)
+- `GET /api/v1/analytics/timeseries` — requests and claims over time (public)
+- `GET /api/v1/claims` — list individual claim records with filters (public)
 
 ## Conventions
 
