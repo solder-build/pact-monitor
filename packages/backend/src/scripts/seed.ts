@@ -22,6 +22,12 @@ const ENDPOINTS: Record<string, string[]> = {
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOLANA_NETWORK = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 
+const REFUND_PCT: Record<string, number> = {
+  timeout: 100,
+  error: 100,
+  schema_mismatch: 75,
+};
+
 function randomGaussian(mean: number, stddev: number): number {
   const u1 = Math.random();
   const u2 = Math.random();
@@ -48,6 +54,9 @@ function randomProtocol(): "x402" | "mpp" | null {
 async function seed() {
   await initDb();
   console.log("Seeding database...");
+
+  // Clean previous seed data for re-runs
+  await query("DELETE FROM claims WHERE agent_id = 'seeder'");
 
   // Create seed API key
   const seedKey = `pact_seed_${randomBytes(12).toString("hex")}`;
@@ -92,13 +101,14 @@ async function seed() {
       const protocol = randomProtocol();
       const paymentAmount = protocol ? Math.round((0.001 + Math.random() * 0.01) * 1_000_000) : null;
 
-      await query(
+      const insertResult = await query<{ id: string }>(
         `INSERT INTO call_records (
           provider_id, endpoint, timestamp, status_code, latency_ms,
           classification, payment_protocol, payment_amount, payment_asset,
           payment_network, payer_address, recipient_address, tx_hash,
           settlement_success, agent_id
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        RETURNING id`,
         [
           providerIds[provider.base_url],
           endpoint,
@@ -117,6 +127,29 @@ async function seed() {
           "seeder",
         ],
       );
+
+      // Create claim for qualifying failures
+      if (classification !== "success" && paymentAmount && paymentAmount > 0) {
+        const refundPct = REFUND_PCT[classification];
+        if (refundPct !== undefined) {
+          const refundAmount = Math.round((paymentAmount * refundPct) / 100);
+          await query(
+            `INSERT INTO claims (
+              call_record_id, provider_id, agent_id, trigger_type,
+              call_cost, refund_pct, refund_amount, status, created_at
+            ) VALUES ($1, $2, 'seeder', $3, $4, $5, $6, 'simulated', $7)`,
+            [
+              insertResult.rows[0].id,
+              providerIds[provider.base_url],
+              classification,
+              paymentAmount,
+              refundPct,
+              refundAmount,
+              timestamp.toISOString(),
+            ],
+          );
+        }
+      }
       totalRecords++;
     }
 
