@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useProviders } from "../hooks/useProviders";
+import { NetworkActivity } from "./NetworkActivity";
 
 const tierColor: Record<string, string> = {
   RELIABLE: "text-slate border-slate",
@@ -29,6 +30,7 @@ export function ProviderTable() {
 
   return (
     <div>
+      <NetworkActivity />
       <div className="flex justify-between items-center mb-4">
         <h2 className="font-serif text-lg text-neutral-300">Provider Rankings</h2>
         {lastUpdated && (
