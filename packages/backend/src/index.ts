@@ -11,7 +11,7 @@ await app.register(healthRoutes);
 await app.register(recordsRoutes);
 await app.register(providersRoutes);
 
-const port = parseInt(process.env.PORT || "3000", 10);
+const port = parseInt(process.env.PORT || "3001", 10);
 
 try {
   await initDb();

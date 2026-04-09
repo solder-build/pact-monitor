@@ -3,8 +3,38 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --color-bg: 247 245 242;
+    --color-surface: 255 255 255;
+    --color-surface-light: 240 237 232;
+    --color-border: 213 208 200;
+    --color-copper: 184 115 51;
+    --color-sienna: 201 85 61;
+    --color-slate: 90 107 122;
+    --color-primary: 45 43 40;
+    --color-heading: 61 58 54;
+    --color-data: 77 74 69;
+    --color-secondary: 122 117 104;
+    --color-muted: 163 157 143;
+  }
+
+  .dark {
+    --color-bg: 21 19 17;
+    --color-surface: 26 25 23;
+    --color-surface-light: 36 34 32;
+    --color-border: 51 51 48;
+    --color-copper: 184 115 51;
+    --color-sienna: 201 85 61;
+    --color-slate: 90 107 122;
+    --color-primary: 229 229 229;
+    --color-heading: 212 212 212;
+    --color-data: 163 163 163;
+    --color-secondary: 115 115 115;
+    --color-muted: 82 82 82;
+  }
+
   body {
-    @apply bg-bg text-neutral-200 font-sans antialiased;
+    @apply bg-bg text-primary font-sans antialiased;
     margin: 0;
   }
 
