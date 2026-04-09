@@ -6,6 +6,8 @@ import { initDb, query, pool } from "../db.js";
 import { healthRoutes } from "./health.js";
 import { recordsRoutes } from "./records.js";
 import { providersRoutes } from "./providers.js";
+import { analyticsRoutes } from "./analytics.js";
+import { claimsRoutes } from "./claims.js";
 
 const TEST_API_KEY = `test-key-${randomUUID()}`;
 const TEST_KEY_HASH = createHash("sha256").update(TEST_API_KEY).digest("hex");
@@ -16,6 +18,8 @@ async function buildApp() {
   await app.register(healthRoutes);
   await app.register(recordsRoutes);
   await app.register(providersRoutes);
+  await app.register(analyticsRoutes);
+  await app.register(claimsRoutes);
   return app;
 }
 
@@ -259,6 +263,54 @@ describe("API integration tests", () => {
         url: `/api/v1/providers/${fakeId}/timeseries`,
       });
       assert.equal(res.statusCode, 404);
+    });
+  });
+
+  describe("GET /api/v1/analytics/summary", () => {
+    it("returns analytics summary with expected fields", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/v1/analytics/summary" });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.equal(typeof body.total_sdk_requests, "number");
+      assert.equal(typeof body.total_claims, "number");
+      assert.equal(typeof body.total_claim_amount, "number");
+      assert.equal(typeof body.total_refund_amount, "number");
+      assert.equal(typeof body.claims_by_trigger, "object");
+      assert.equal(typeof body.unique_agents, "number");
+      assert.equal(typeof body.unique_providers, "number");
+    });
+  });
+
+  describe("GET /api/v1/analytics/timeseries", () => {
+    it("returns timeseries data with expected structure", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/analytics/timeseries?granularity=daily&days=7",
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.equal(body.granularity, "daily");
+      assert.ok(Array.isArray(body.data));
+    });
+  });
+
+  describe("GET /api/v1/claims", () => {
+    it("returns an array", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/v1/claims" });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.ok(Array.isArray(body));
+    });
+
+    it("respects limit parameter", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/claims?limit=1",
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.ok(Array.isArray(body));
+      assert.ok(body.length <= 1);
     });
   });
 });
