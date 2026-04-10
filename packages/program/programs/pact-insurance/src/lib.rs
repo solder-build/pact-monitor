@@ -14,4 +14,11 @@ declare_id!("4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob");
 #[program]
 pub mod pact_insurance {
     use super::*;
+
+    pub fn initialize_protocol(
+        ctx: Context<InitializeProtocol>,
+        args: InitializeProtocolArgs,
+    ) -> Result<()> {
+        instructions::initialize_protocol::handler(ctx, args)
+    }
 }
