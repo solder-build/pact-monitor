@@ -10,7 +10,8 @@ describe("pact-insurance: protocol", () => {
 
   const program = anchor.workspace.PactInsurance as Program<PactInsurance>;
 
-  const treasury = Keypair.generate();
+  const authority = Keypair.generate().publicKey;
+  const treasury = Keypair.generate().publicKey;
   const usdcMint = Keypair.generate().publicKey;
 
   let protocolPda: PublicKey;
@@ -22,22 +23,24 @@ describe("pact-insurance: protocol", () => {
     );
   });
 
-  it("initializes the protocol config with defaults", async () => {
+  it("initializes the protocol config with a separate authority", async () => {
     await program.methods
       .initializeProtocol({
-        treasury: treasury.publicKey,
+        authority,
+        treasury,
         usdcMint,
       })
       .accounts({
         config: protocolPda,
-        authority: provider.wallet.publicKey,
+        deployer: provider.wallet.publicKey,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
 
     const config = await program.account.protocolConfig.fetch(protocolPda);
-    expect(config.authority.toString()).to.equal(provider.wallet.publicKey.toString());
-    expect(config.treasury.toString()).to.equal(treasury.publicKey.toString());
+    expect(config.authority.toString()).to.equal(authority.toString());
+    expect(config.authority.toString()).to.not.equal(provider.wallet.publicKey.toString());
+    expect(config.treasury.toString()).to.equal(treasury.toString());
     expect(config.usdcMint.toString()).to.equal(usdcMint.toString());
     expect(config.protocolFeeBps).to.equal(1500);
     expect(config.minPoolDeposit.toNumber()).to.equal(100_000_000);
@@ -51,12 +54,13 @@ describe("pact-insurance: protocol", () => {
     try {
       await program.methods
         .initializeProtocol({
-          treasury: treasury.publicKey,
+          authority,
+          treasury,
           usdcMint,
         })
         .accounts({
           config: protocolPda,
-          authority: provider.wallet.publicKey,
+          deployer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();

@@ -4,6 +4,7 @@ use crate::constants::*;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct InitializeProtocolArgs {
+    pub authority: Pubkey,
     pub treasury: Pubkey,
     pub usdc_mint: Pubkey,
 }
@@ -12,7 +13,7 @@ pub struct InitializeProtocolArgs {
 pub struct InitializeProtocol<'info> {
     #[account(
         init,
-        payer = authority,
+        payer = deployer,
         space = 8 + ProtocolConfig::INIT_SPACE,
         seeds = [ProtocolConfig::SEED],
         bump
@@ -20,7 +21,7 @@ pub struct InitializeProtocol<'info> {
     pub config: Account<'info, ProtocolConfig>,
 
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub deployer: Signer<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -31,7 +32,7 @@ pub fn handler(
 ) -> Result<()> {
     let config = &mut ctx.accounts.config;
 
-    config.authority = ctx.accounts.authority.key();
+    config.authority = args.authority;
     config.treasury = args.treasury;
     config.usdc_mint = args.usdc_mint;
 
