@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-pact_insurance = "FUAGbxvL34cU74bnK3dfap5rYEpeHnTuo6SegXzYyLvs"
+pact_insurance = "4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob"
 
 [programs.localnet]
 pact_insurance = "4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob"
