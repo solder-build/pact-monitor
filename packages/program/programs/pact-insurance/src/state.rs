@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::constants::{MAX_AGENT_ID_LEN, MAX_HOSTNAME_LEN};
+use crate::constants::{MAX_AGENT_ID_LEN, MAX_CALL_ID_LEN, MAX_HOSTNAME_LEN};
 
 #[account]
 #[derive(InitSpace)]
@@ -99,4 +99,44 @@ pub struct Policy {
 
 impl Policy {
     pub const SEED_PREFIX: &'static [u8] = b"policy";
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum TriggerType {
+    Timeout,
+    Error,
+    SchemaMismatch,
+    LatencySla,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum ClaimStatus {
+    Pending,
+    Approved,
+    Rejected,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Claim {
+    pub policy: Pubkey,
+    pub pool: Pubkey,
+    pub agent: Pubkey,
+    #[max_len(MAX_CALL_ID_LEN)]
+    pub call_id: String,
+    pub trigger_type: TriggerType,
+    pub evidence_hash: [u8; 32],
+    pub call_timestamp: i64,
+    pub latency_ms: u32,
+    pub status_code: u16,
+    pub payment_amount: u64,
+    pub refund_amount: u64,
+    pub status: ClaimStatus,
+    pub created_at: i64,
+    pub resolved_at: i64,
+    pub bump: u8,
+}
+
+impl Claim {
+    pub const SEED_PREFIX: &'static [u8] = b"claim";
 }

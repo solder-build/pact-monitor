@@ -58,4 +58,8 @@ pub mod pact_insurance {
     pub fn update_rates(ctx: Context<UpdateRates>, new_rate_bps: u16) -> Result<()> {
         instructions::update_rates::handler(ctx, new_rate_bps)
     }
+
+    pub fn submit_claim(ctx: Context<SubmitClaim>, args: SubmitClaimArgs) -> Result<()> {
+        instructions::submit_claim::handler(ctx, args)
+    }
 }
