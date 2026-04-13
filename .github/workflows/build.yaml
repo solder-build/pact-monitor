@@ -90,28 +90,5 @@ jobs:
           docker push ${IMAGE%:*}:latest
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
-      - name: Notify Success
-        if: success()
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-          slack-message: |
-            :white_check_mark: *[${{ inputs.environment }}] Build Successful*
-            Service: `${{ env.SERVICE_NAME }}` | Image: `${{ steps.sha.outputs.short_sha }}`
-            Repo: ${{ github.repository }} | Branch: ${{ github.ref_name }}
-            By: ${{ github.actor }} | ${{ github.event.head_commit.url }}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-
-      - name: Notify Failure
-        if: failure()
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-          slack-message: |
-            :x: *[${{ inputs.environment }}] Build Failed*
-            Service: `${{ env.SERVICE_NAME }}` | Branch: ${{ github.ref_name }}
-            Repo: ${{ github.repository }}
-            By: ${{ github.actor }} | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      # Slack notifications removed 2026-04-13 to keep Actions runs green while
+      # SLACK_BOT_TOKEN / SLACK_CHANNEL_ID are unset. To restore: OPERATION_CHATTER.
