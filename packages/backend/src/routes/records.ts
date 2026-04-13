@@ -18,6 +18,7 @@ interface RecordInput {
   recipient_address?: string | null;
   tx_hash?: string | null;
   settlement_success?: boolean | null;
+  agent_pubkey?: string | null;
 }
 
 interface RecordsBody {
@@ -62,8 +63,8 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
             provider_id, endpoint, timestamp, status_code, latency_ms,
             classification, payment_protocol, payment_amount, payment_asset,
             payment_network, payer_address, recipient_address, tx_hash,
-            settlement_success, agent_id
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            settlement_success, agent_id, agent_pubkey
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
           RETURNING id`,
           [
             providerId, rec.endpoint, rec.timestamp, rec.status_code,
@@ -71,7 +72,7 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
             rec.payment_amount ?? null, rec.payment_asset ?? null,
             rec.payment_network ?? null, rec.payer_address ?? null,
             rec.recipient_address ?? null, rec.tx_hash ?? null,
-            rec.settlement_success ?? null, agentId,
+            rec.settlement_success ?? null, agentId, rec.agent_pubkey ?? null,
           ],
         );
 
@@ -83,6 +84,12 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
           agentId,
           classification: rec.classification,
           paymentAmount: rec.payment_amount ?? null,
+          agentPubkey: rec.agent_pubkey ?? null,
+          providerHostname: rec.hostname,
+          latencyMs: rec.latency_ms,
+          statusCode: rec.status_code,
+          createdAt: new Date(rec.timestamp),
+          logger: app.log,
         });
 
         accepted++;

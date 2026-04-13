@@ -20,6 +20,7 @@ export class PactMonitor {
       syncBatchSize: config.syncBatchSize ?? 100,
       latencyThresholdMs: config.latencyThresholdMs ?? 5_000,
       storagePath: config.storagePath || "",
+      agentPubkey: config.agentPubkey || "",
     };
 
     this.storage = new PactStorage(this.config.storagePath || undefined);
@@ -114,6 +115,7 @@ export class PactMonitor {
       classification,
       payment,
       synced: false,
+      agentPubkey: this.config.agentPubkey || null,
     };
 
     this.storage.append(record);

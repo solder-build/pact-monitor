@@ -20,6 +20,7 @@ export interface CallRecord {
   classification: Classification;
   payment: PaymentData | null;
   synced: boolean;
+  agentPubkey?: string | null;
 }
 
 export interface PactConfig {
@@ -30,6 +31,7 @@ export interface PactConfig {
   syncBatchSize?: number;
   latencyThresholdMs?: number;
   storagePath?: string;
+  agentPubkey?: string;
 }
 
 export interface ExpectedSchema {

@@ -57,6 +57,7 @@ export class PactSync {
         recipient_address: r.payment?.recipientAddress ?? null,
         tx_hash: r.payment?.txHash ?? null,
         settlement_success: r.payment?.settlementSuccess ?? null,
+        agent_pubkey: r.agentPubkey ?? null,
       })),
     };
 

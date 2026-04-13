@@ -2,6 +2,8 @@ export interface ProviderSummary {
   id: string;
   name: string;
   category: string;
+  hostname?: string;
+  base_url?: string;
   total_calls: number;
   failure_rate: number;
   avg_latency_ms: number;

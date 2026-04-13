@@ -54,17 +54,12 @@ export function ProviderDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Match a coverage pool to this provider. The pool is keyed by hostname
-  // (e.g. "api.helius.xyz") while the provider carries a display name
-  // (e.g. "Helius"). The scorecard provider API does not expose base_url,
-  // so we do a best-effort substring match by the provider's first name
-  // token. This is brittle for demo data but works until the backend
-  // exposes hostname on the provider detail endpoint.
   const matchedPool = useMemo(() => {
     if (!provider || !pools) return null;
-    const token = provider.name.split(/\s+/)[0]?.toLowerCase();
-    if (!token) return null;
-    return pools.find((pool) => pool.hostname.toLowerCase().includes(token)) || null;
+    const hostname = (provider as { hostname?: string; base_url?: string }).hostname
+      ?? (provider as { hostname?: string; base_url?: string }).base_url;
+    if (!hostname) return null;
+    return pools.find((pool) => pool.hostname === hostname) || null;
   }, [provider, pools]);
 
   if (loading) return <p className="text-secondary font-mono text-sm">Loading...</p>;
