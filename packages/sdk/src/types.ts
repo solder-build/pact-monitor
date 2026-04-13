@@ -20,7 +20,6 @@ export interface CallRecord {
   classification: Classification;
   payment: PaymentData | null;
   synced: boolean;
-  agentPubkey?: string | null;
 }
 
 export interface PactConfig {

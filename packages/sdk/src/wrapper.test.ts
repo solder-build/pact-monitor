@@ -1,9 +1,10 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { PactMonitor } from "./wrapper.js";
+import { PactSync } from "./sync.js";
 import type { CallRecord } from "./types.js";
 
 describe("PactMonitor events", () => {
@@ -82,4 +83,60 @@ describe("PactMonitor events", () => {
     assert.equal(failures.length, 1);
     assert.equal(failures[0]!.classification, "error");
   });
+});
+
+test("sync payload no longer includes agent_pubkey field", async () => {
+  const storage = {
+    getUnsynced: () => [
+      {
+        hostname: "x.com",
+        endpoint: "/v1",
+        timestamp: new Date().toISOString(),
+        statusCode: 200,
+        latencyMs: 10,
+        classification: "success" as const,
+        payment: null,
+        synced: false,
+        agentPubkey: "should-not-be-sent",
+      },
+    ],
+    markSynced: () => {},
+  };
+  let capturedPayload: unknown;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url: unknown, init: RequestInit | undefined) => {
+    capturedPayload = JSON.parse(init!.body as string);
+    return new Response("{}", { status: 200 });
+  };
+  try {
+    const sync = new PactSync(storage as never, "http://x", "k", 1, 10);
+    await sync.flush();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.notEqual(capturedPayload, undefined, "fetch was never called");
+  const record = (capturedPayload as { records: Record<string, unknown>[] }).records[0];
+  assert.equal("agent_pubkey" in record, false, "agent_pubkey should be excluded from wire payload");
+});
+
+test("PactMonitor warns when syncEnabled+apiKey but agentPubkey is empty", () => {
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (msg: string) => { warnings.push(msg); };
+  try {
+    try {
+      new PactMonitor({
+        syncEnabled: true,
+        apiKey: "k",
+        backendUrl: "http://localhost:0",
+      });
+    } catch { /* downstream sync init may fail in test env */ }
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.ok(
+    warnings.some((w) => w.includes("agentPubkey missing")),
+    `expected warning containing 'agentPubkey missing', got: [${warnings.join(", ")}]`,
+  );
 });
