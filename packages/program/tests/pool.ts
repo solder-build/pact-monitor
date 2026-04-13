@@ -4,7 +4,7 @@ import { PactInsurance } from "../target/types/pact_insurance";
 import { PublicKey, Keypair, SystemProgram, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { expect } from "chai";
-import { getOrInitProtocol } from "./helpers/setup";
+import { getOrInitProtocol } from "../test-utils/setup";
 
 describe("pact-insurance: pool", () => {
   const provider = anchor.AnchorProvider.env();

@@ -3,7 +3,7 @@ import { Program, BN } from "@anchor-lang/core";
 import { PactInsurance } from "../target/types/pact_insurance";
 import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
 import { expect } from "chai";
-import { getOrInitProtocol } from "./helpers/setup";
+import { getOrInitProtocol } from "../test-utils/setup";
 
 describe("pact-insurance: protocol", () => {
   const provider = anchor.AnchorProvider.env();
