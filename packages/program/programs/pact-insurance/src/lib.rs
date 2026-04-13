@@ -50,4 +50,8 @@ pub mod pact_insurance {
     pub fn settle_premium(ctx: Context<SettlePremium>, call_value: u64) -> Result<()> {
         instructions::settle_premium::handler(ctx, call_value)
     }
+
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        instructions::withdraw::handler(ctx, amount)
+    }
 }

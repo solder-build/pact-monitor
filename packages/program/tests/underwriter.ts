@@ -140,6 +140,27 @@ describe("pact-insurance: underwriter deposit", () => {
     expect(Number(vaultAccount.amount)).to.equal(100_000_000);
   });
 
+  it("rejects withdraw before cooldown elapsed", async () => {
+    try {
+      await program.methods
+        .withdraw(new BN(10_000_000))
+        .accounts({
+          config: protocolPda,
+          pool: poolPda,
+          vault: vaultPda,
+          position: positionPda,
+          underwriterTokenAccount: underwriterAta,
+          underwriter: underwriter.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([underwriter])
+        .rpc();
+      expect.fail("should have rejected");
+    } catch (err: any) {
+      expect(String(err)).to.match(/WithdrawalUnderCooldown/);
+    }
+  });
+
   it("rejects deposit below min_pool_deposit", async () => {
     try {
       await program.methods
