@@ -167,6 +167,8 @@ The Anchor program at `packages/program/` lifts the parametric insurance from a 
 
 **Devnet program**: `4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob`
 
+**New here?** Read [`docs/STRUCTURE.md`](./docs/STRUCTURE.md) for a file-tree map of the whole monorepo, then [`docs/PHASE3.md`](./docs/PHASE3.md) for the architecture handbook.
+
 **Highlights**:
 - Per-provider `CoveragePool` PDAs with PDA-owned SPL token vaults
 - Underwriters deposit USDC for yield; cooldown-enforced withdrawals
