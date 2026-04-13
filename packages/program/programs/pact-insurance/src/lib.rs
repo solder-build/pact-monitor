@@ -39,4 +39,11 @@ pub mod pact_insurance {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         instructions::deposit::handler(ctx, amount)
     }
+
+    pub fn enable_insurance(
+        ctx: Context<EnableInsurance>,
+        args: EnableInsuranceArgs,
+    ) -> Result<()> {
+        instructions::enable_insurance::handler(ctx, args)
+    }
 }
