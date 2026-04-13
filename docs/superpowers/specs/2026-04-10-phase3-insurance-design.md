@@ -192,7 +192,7 @@ pub struct Policy {
     pub agent: Pubkey,
     pub pool: Pubkey,
     pub agent_id: String,                // max 64 chars
-    pub prepaid_balance: u64,            // agent's USDC, drained by crank
+    pub agent_token_account: Pubkey,     // the agent's USDC ATA approved as delegate source
     pub total_premiums_paid: u64,
     pub total_claims_received: u64,
     pub calls_covered: u64,
@@ -203,7 +203,11 @@ pub struct Policy {
 }
 ```
 
-**Where is `prepaid_balance` physically held?** In the pool's vault token account, with `prepaid_balance` tracking the agent's claim on those funds. This avoids creating a separate token account per policy (rent cost + complexity). Settlement moves funds from "agent's claim" to "pool's claim" via internal accounting: the USDC stays in the vault, but `total_deposited`/`total_available` increase by the pool_premium portion and `prepaid_balance` decreases by the gross_premium. Protocol fees are transferred out to the treasury token account during settlement.
+**Delegation model (not prepaid):** An agent does NOT deposit USDC when enabling insurance. Instead, they call SPL `approve(delegate: pool_pda, amount: N)` on their USDC token account — this grants the pool PDA permission to transfer up to N USDC from the agent's ATA. The actual USDC stays in the agent's wallet.
+
+When the crank calls `settle_premium`, it uses the pool PDA as the delegate to pull premium amounts directly from the agent's ATA into the pool vault (`pool_premium`) and treasury ATA (`protocol_fee`). The agent's wallet balance visibly decreases with each settlement — there is no separate "prepaid balance" to track.
+
+**Why not prepaid:** Rick's 2026-04-12 feedback: agents should not see a chunk of USDC move into a vault upfront. They should see their wallet balance tick down per settlement, exactly like a prepaid phone. SPL token delegation delivers this without adding per-call on-chain overhead.
 
 ### Claim
 
@@ -289,44 +293,47 @@ pub enum ClaimStatus { Pending, Approved, Rejected }
 - Transfers USDC from vault to underwriter token account
 - Updates `position.deposited`, `pool.total_deposited`, `pool.total_available`
 
-### 6. `create_policy`
+### 6. `enable_insurance`
 
 **Signer:** agent.
-**Args:** `agent_id: String`, `prepaid_amount: u64`, `expires_at: i64`.
+**Args:** `agent_id: String`, `expires_at: i64`.
 **Behavior:**
 - Rejects if `config.paused`
 - Rejects if policy already exists for this agent/pool pair (PDA collision)
-- Transfers `prepaid_amount` USDC from agent to vault
-- Creates `Policy` PDA with `prepaid_balance = prepaid_amount`, `active = true`
+- Validates `agent_token_account.delegate == Some(pool_pda)` (agent must have done SPL approve first)
+- Validates `agent_token_account.delegated_amount > 0`
+- Validates `agent_token_account.owner == agent.key()`
+- Validates `agent_token_account.mint == pool.usdc_mint`
+- Creates `Policy` PDA, records `agent_token_account` pubkey, sets `active = true`
 
-### 7. `top_up`
+**SDK flow:** The agent SDK builds a single transaction containing two instructions:
+1. `spl_token::approve` — sets `pool_pda` as delegate with an initial allowance (e.g., 10 USDC)
+2. `enable_insurance` — creates the Policy PDA
 
-**Signer:** agent.
-**Args:** `amount: u64`.
-**Behavior:**
-- Rejects if `config.paused`
-- Rejects if `!policy.active`
-- Transfers `amount` USDC from agent to vault
-- `policy.prepaid_balance += amount`
+Both signed by the agent in one atomic transaction.
 
-### 8. `settle_premium`
+### 7. `settle_premium`
 
 **Signer:** `config.authority` (called by crank).
 **Args:** `call_value: u64` (total x402 payment value since last settlement for this agent+pool).
+**Accounts:** config, pool, vault, policy, agent_token_account, treasury_token_account, authority, token_program.
 **Behavior:**
 - Rejects if `!policy.active`
+- Rejects if `agent_token_account.key() != policy.agent_token_account` (sanity check)
+- Rejects if `agent_token_account.delegate != Some(pool.key())` (agent must still have an active delegation)
 - Compute `gross_premium = call_value * pool.insurance_rate_bps / 10000`
-- If `gross_premium > policy.prepaid_balance`, cap to balance
+- Cap `gross_premium` at `min(agent_token_account.delegated_amount, agent_token_account.amount)`
+- If `gross_premium == 0`: return Ok (nothing to settle)
 - Compute `protocol_fee = gross_premium * config.protocol_fee_bps / 10000`
 - Compute `pool_premium = gross_premium - protocol_fee`
-- Transfer `protocol_fee` USDC from vault to treasury token account
-- `policy.prepaid_balance -= gross_premium`
+- Transfer `pool_premium` from `agent_token_account` → `vault` via delegate-signed SPL transfer (pool PDA as authority)
+- If `protocol_fee > 0`: transfer `protocol_fee` from `agent_token_account` → `treasury_token_account` via delegate-signed SPL transfer
 - `policy.total_premiums_paid += gross_premium`
 - `pool.total_premiums_earned += pool_premium`
 - `pool.total_available += pool_premium` (yield becomes underwriter capital)
-- If `policy.prepaid_balance == 0`: mark `policy.active = false`
+- If `agent_token_account.delegated_amount` reaches 0 after the transfers, the SPL token program auto-clears the delegate. Policy stays `active` but subsequent settlements will fail the delegation check until the agent re-approves. The off-chain SDK should prompt the agent to re-approve when delegation runs low.
 
-### 9. `update_rates`
+### 8. `update_rates`
 
 **Signer:** `config.authority` (called by crank).
 **Args:** `new_rate_bps: u16`.
@@ -334,7 +341,7 @@ pub enum ClaimStatus { Pending, Approved, Rejected }
 - Updates `pool.insurance_rate_bps = new_rate_bps`
 - Updates `pool.updated_at = now`
 
-### 10. `submit_claim`
+### 9. `submit_claim`
 
 **Signer:** `config.authority` (backend oracle).
 **Args:** `call_id: String`, `trigger_type: TriggerType`, `evidence_hash: [u8; 32]`, `call_timestamp: i64`, `latency_ms: u32`, `status_code: u16`, `payment_amount: u64`.
@@ -360,8 +367,10 @@ pub enum PactError {
     PoolAlreadyExists,
     PolicyAlreadyExists,
     PolicyInactive,
+    DelegationMissing,
+    DelegationInsufficient,
+    TokenAccountMismatch,
     InsufficientPoolBalance,
-    InsufficientPrepaidBalance,
     WithdrawalUnderCooldown,
     WithdrawalWouldUnderfund,
     AggregateCapExceeded,
