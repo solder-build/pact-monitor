@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ProviderTable } from "./components/ProviderTable";
 import { ProviderDetail } from "./components/ProviderDetail";
+import { PoolDetail } from "./components/PoolDetail";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 export function App() {
@@ -22,6 +23,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<ProviderTable />} />
             <Route path="/provider/:id" element={<ProviderDetail />} />
+            <Route path="/pool/:hostname" element={<PoolDetail />} />
           </Routes>
         </main>
       </div>

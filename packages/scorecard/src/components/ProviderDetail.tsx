@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, type ProviderDetail as ProviderDetailType, type TimeseriesData } from "../api/client";
 import { FailureTimeline } from "./Charts/FailureTimeline";
 import { FailureBreakdown } from "./Charts/FailureBreakdown";
+import { usePools } from "../hooks/usePools";
 
 const tierColor: Record<string, string> = {
   RELIABLE: "text-slate border-slate",
@@ -27,12 +28,21 @@ function StatCard({ label, value, color }: { label: string; value: string; color
   );
 }
 
+function formatUsdcAmount(amount: string): string {
+  return `${(Number(amount) / 1e6).toFixed(2)} USDC`;
+}
+
+function formatBps(bps: number): string {
+  return `${(bps / 100).toFixed(2)}%`;
+}
+
 export function ProviderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [provider, setProvider] = useState<ProviderDetailType | null>(null);
   const [timeseries, setTimeseries] = useState<TimeseriesData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { pools } = usePools();
 
   useEffect(() => {
     if (!id) return;
@@ -43,6 +53,19 @@ export function ProviderDetail() {
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Match a coverage pool to this provider. The pool is keyed by hostname
+  // (e.g. "api.helius.xyz") while the provider carries a display name
+  // (e.g. "Helius"). The scorecard provider API does not expose base_url,
+  // so we do a best-effort substring match by the provider's first name
+  // token. This is brittle for demo data but works until the backend
+  // exposes hostname on the provider detail endpoint.
+  const matchedPool = useMemo(() => {
+    if (!provider || !pools) return null;
+    const token = provider.name.split(/\s+/)[0]?.toLowerCase();
+    if (!token) return null;
+    return pools.find((pool) => pool.hostname.toLowerCase().includes(token)) || null;
+  }, [provider, pools]);
 
   if (loading) return <p className="text-secondary font-mono text-sm">Loading...</p>;
   if (!provider) return <p className="text-sienna font-mono text-sm">Provider not found</p>;
@@ -131,6 +154,42 @@ export function ProviderDetail() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="bg-surface border border-border p-4 mt-6">
+        <h3 className="text-xs text-secondary uppercase tracking-widest font-sans mb-4">Coverage</h3>
+        {matchedPool ? (
+          <div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+              <div>
+                <div className="text-xs text-secondary uppercase tracking-widest font-sans">Pool Capital</div>
+                <div className="font-mono text-lg mt-1 text-copper">
+                  {formatUsdcAmount(matchedPool.totalDeposited)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary uppercase tracking-widest font-sans">Current Rate</div>
+                <div className="font-mono text-lg mt-1 text-copper">
+                  {formatBps(matchedPool.insuranceRateBps)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary uppercase tracking-widest font-sans">Active Policies</div>
+                <div className="font-mono text-lg mt-1 text-primary">
+                  {matchedPool.activePolicies.toLocaleString()}
+                </div>
+              </div>
+            </div>
+            <Link
+              to={`/pool/${encodeURIComponent(matchedPool.hostname)}`}
+              className="inline-block text-sm text-copper hover:text-heading font-sans border border-copper px-3 py-1"
+            >
+              View Pool Details
+            </Link>
+          </div>
+        ) : (
+          <p className="text-secondary font-mono text-sm">No coverage pool for this provider</p>
+        )}
       </div>
     </div>
   );
