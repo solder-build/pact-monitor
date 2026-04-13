@@ -1,4 +1,4 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it, test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, createHash, randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
@@ -11,6 +11,7 @@ import { providersRoutes } from "./providers.js";
 import { analyticsRoutes } from "./analytics.js";
 import { claimsRoutes } from "./claims.js";
 import { claimsSubmitRoute } from "./claims-submit.js";
+import { poolsRoute } from "./pools.js";
 
 const TEST_API_KEY = `test-key-${randomUUID()}`;
 const TEST_KEY_HASH = createHash("sha256").update(TEST_API_KEY).digest("hex");
@@ -35,6 +36,7 @@ async function buildTestApp() {
   await app.register(analyticsRoutes);
   await app.register(claimsRoutes);
   await app.register(claimsSubmitRoute);
+  await app.register(poolsRoute);
   return app;
 }
 
@@ -535,5 +537,76 @@ describe("API integration tests", () => {
       await query("DELETE FROM api_keys WHERE key_hash = $1", [hashA]);
       await testApp.close();
     });
+  });
+
+  // Step 2.1 — oracle keypair module-scope cache
+  test("oracle keypair cache returns same object reference across N calls", async () => {
+    // ESM module exports are read-only — we cannot monkey-patch fs.readFileSync.
+    // Instead we verify caching by identity: getCachedOracleKeypair() must return
+    // the exact same Keypair object on every call after the first (proving no
+    // re-read). We also confirm the public key matches the key we wrote.
+    const { Keypair } = await import("@solana/web3.js");
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const tmpFile = path.join(os.tmpdir(), `pact-oracle-test-${Date.now()}.json`);
+    const kp = Keypair.generate();
+    fs.writeFileSync(tmpFile, JSON.stringify(Array.from(kp.secretKey)));
+
+    const savedEnv = process.env.PACT_ORACLE_KEYPAIR;
+    process.env.PACT_ORACLE_KEYPAIR = tmpFile;
+
+    const { getCachedOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../services/claim-settlement.js");
+    __resetOracleKeypairCacheForTests();
+
+    const a = getCachedOracleKeypair();
+    const b = getCachedOracleKeypair();
+    const c = getCachedOracleKeypair();
+
+    // All calls must return the same cached object (reference equality).
+    assert.strictEqual(a, b, "second call must return the cached keypair instance");
+    assert.strictEqual(b, c, "third call must return the cached keypair instance");
+    // And it must be the keypair we wrote.
+    assert.equal(a.publicKey.toBase58(), kp.publicKey.toBase58());
+
+    if (savedEnv === undefined) delete process.env.PACT_ORACLE_KEYPAIR;
+    else process.env.PACT_ORACLE_KEYPAIR = savedEnv;
+    fs.unlinkSync(tmpFile);
+    __resetOracleKeypairCacheForTests();
+  });
+
+  // Step 2.2/2.3 — pools route: 503 on missing env, cache consistency
+  test("GET /api/v1/pools returns 503 when SOLANA_PROGRAM_ID missing", async () => {
+    const saved = process.env.SOLANA_PROGRAM_ID;
+    delete process.env.SOLANA_PROGRAM_ID;
+    const { __resetPoolCacheForTests } = await import("../routes/pools.js");
+    __resetPoolCacheForTests();
+    const app = await buildTestApp();
+    const resp = await app.inject({ method: "GET", url: "/api/v1/pools" });
+    assert.equal(resp.statusCode, 503);
+    const body = resp.json();
+    assert.equal(body.error, "Solana configuration unavailable");
+    if (saved !== undefined) process.env.SOLANA_PROGRAM_ID = saved;
+    await app.close();
+  });
+
+  test("GET /api/v1/pools sequential calls return consistent status (error responses not cached)", async () => {
+    // With no validator running both calls fall through to the RPC error path
+    // and both return 502. Asserts that error responses are NOT cached (i.e.
+    // the cache is not poisoned) and both requests are treated equally.
+    process.env.SOLANA_PROGRAM_ID = process.env.SOLANA_PROGRAM_ID ?? "4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob";
+    const { __resetPoolCacheForTests, __getPoolCacheTimestampForTests } = await import("../routes/pools.js");
+    __resetPoolCacheForTests();
+    const app = await buildTestApp();
+    const r1 = await app.inject({ method: "GET", url: "/api/v1/pools" });
+    const r2 = await app.inject({ method: "GET", url: "/api/v1/pools" });
+    assert.equal(r1.statusCode, r2.statusCode, "sequential calls should return identical status");
+    // Errors must NOT populate the cache.
+    assert.equal(
+      __getPoolCacheTimestampForTests(),
+      null,
+      "cache should remain empty after RPC error responses",
+    );
+    await app.close();
   });
 });
