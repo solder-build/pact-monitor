@@ -11,6 +11,15 @@ pub enum PactError {
     #[msg("Policy already exists for this agent and pool")]
     PolicyAlreadyExists,
 
+    #[msg("Agent token account has no delegation set")]
+    DelegationMissing,
+
+    #[msg("Agent token account delegated amount is insufficient")]
+    DelegationInsufficient,
+
+    #[msg("Agent token account does not match policy")]
+    TokenAccountMismatch,
+
     #[msg("Policy is not active")]
     PolicyInactive,
 

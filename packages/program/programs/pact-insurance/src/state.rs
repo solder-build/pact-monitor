@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::constants::MAX_HOSTNAME_LEN;
+use crate::constants::{MAX_AGENT_ID_LEN, MAX_HOSTNAME_LEN};
 
 #[account]
 #[derive(InitSpace)]
@@ -78,4 +78,25 @@ pub struct UnderwriterPosition {
 
 impl UnderwriterPosition {
     pub const SEED_PREFIX: &'static [u8] = b"position";
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Policy {
+    pub agent: Pubkey,
+    pub pool: Pubkey,
+    #[max_len(MAX_AGENT_ID_LEN)]
+    pub agent_id: String,
+    pub agent_token_account: Pubkey,
+    pub total_premiums_paid: u64,
+    pub total_claims_received: u64,
+    pub calls_covered: u64,
+    pub active: bool,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub bump: u8,
+}
+
+impl Policy {
+    pub const SEED_PREFIX: &'static [u8] = b"policy";
 }
