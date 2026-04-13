@@ -8,3 +8,8 @@ coverage
 *.map
 .DS_Store
 .git
+
+# Force Docker builds to use tsconfig.docker.json. The repo tsconfig.json
+# extends ../../tsconfig.base.json, which silently falls back to TS defaults
+# (ES3, no esModuleInterop) when built from packages/backend as context.
+tsconfig.json
