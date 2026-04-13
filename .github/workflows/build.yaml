@@ -1,0 +1,117 @@
+name: Build and Push to AR
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: false
+        default: "packages/backend/Dockerfile"
+      context:
+        description: "Docker build context directory"
+        required: false
+        default: "packages/backend"
+
+env:
+  REGION: asia-southeast1
+  SERVICE_NAME: pact-monitor-backend
+  AR_REPO: pact-monitor-backend
+  CICD_SA: gh-pact-monitor-backend-sa
+
+jobs:
+  build:
+    name: Build (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+      short_sha: ${{ steps.sha.outputs.short_sha }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          token: ${{ secrets.ORG_GITHUB_TOKEN }}
+
+      - name: Resolve environment config
+        id: env
+        run: |
+          if [ "${{ inputs.environment }}" = "staging" ]; then
+            echo "project_id=staging-apps-482206" >> $GITHUB_OUTPUT
+            echo "project_number=871482515924" >> $GITHUB_OUTPUT
+            echo "wif_pool=wif-staging-apps-pool" >> $GITHUB_OUTPUT
+            echo "wif_provider=wif-staging-apps-provider" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Production environment is not yet configured for pact-monitor-backend."
+            exit 1
+          fi
+
+      - name: Create env file
+        run: |
+          if [ "${{ inputs.environment }}" = "staging" ]; then
+            echo "${{ secrets.ENV_STG }}" > ${{ inputs.context }}/.env
+          else
+            echo "${{ secrets.ENV_PROD }}" > ${{ inputs.context }}/.env
+          fi
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ steps.env.outputs.project_id }}
+          workload_identity_provider: "projects/${{ steps.env.outputs.project_number }}/locations/global/workloadIdentityPools/${{ steps.env.outputs.wif_pool }}/providers/${{ steps.env.outputs.wif_provider }}"
+          service_account: "${{ env.CICD_SA }}@${{ steps.env.outputs.project_id }}.iam.gserviceaccount.com"
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Set short SHA
+        id: sha
+        run: echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        id: build
+        env:
+          IMAGE: "${{ env.REGION }}-docker.pkg.dev/${{ steps.env.outputs.project_id }}/${{ env.AR_REPO }}/${{ env.SERVICE_NAME }}:${{ steps.sha.outputs.short_sha }}"
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -f ${{ inputs.dockerfile }} \
+            -t $IMAGE \
+            ${{ inputs.context }}
+          docker push $IMAGE
+          docker tag $IMAGE ${IMAGE%:*}:latest
+          docker push ${IMAGE%:*}:latest
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Notify Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-message: |
+            :white_check_mark: *[${{ inputs.environment }}] Build Successful*
+            Service: `${{ env.SERVICE_NAME }}` | Image: `${{ steps.sha.outputs.short_sha }}`
+            Repo: ${{ github.repository }} | Branch: ${{ github.ref_name }}
+            By: ${{ github.actor }} | ${{ github.event.head_commit.url }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Notify Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-message: |
+            :x: *[${{ inputs.environment }}] Build Failed*
+            Service: `${{ env.SERVICE_NAME }}` | Branch: ${{ github.ref_name }}
+            Repo: ${{ github.repository }}
+            By: ${{ github.actor }} | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
