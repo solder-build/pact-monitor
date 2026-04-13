@@ -35,4 +35,8 @@ pub mod pact_insurance {
     ) -> Result<()> {
         instructions::create_pool::handler(ctx, args)
     }
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit::handler(ctx, amount)
+    }
 }

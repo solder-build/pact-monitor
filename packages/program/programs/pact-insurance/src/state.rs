@@ -62,3 +62,20 @@ impl CoveragePool {
     pub const SEED_PREFIX: &'static [u8] = b"pool";
     pub const VAULT_SEED_PREFIX: &'static [u8] = b"vault";
 }
+
+#[account]
+#[derive(InitSpace)]
+pub struct UnderwriterPosition {
+    pub pool: Pubkey,
+    pub underwriter: Pubkey,
+    pub deposited: u64,
+    pub earned_premiums: u64,
+    pub losses_absorbed: u64,
+    pub deposit_timestamp: i64,
+    pub last_claim_timestamp: i64,
+    pub bump: u8,
+}
+
+impl UnderwriterPosition {
+    pub const SEED_PREFIX: &'static [u8] = b"position";
+}
