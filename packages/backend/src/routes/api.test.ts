@@ -1,13 +1,16 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, randomBytes } from "node:crypto";
+import type { FastifyRequest } from "fastify";
 import Fastify from "fastify";
-import { initDb, query, pool } from "../db.js";
+import { initDb, query, getOne, pool } from "../db.js";
+import { requireApiKey } from "../middleware/auth.js";
 import { healthRoutes } from "./health.js";
 import { recordsRoutes } from "./records.js";
 import { providersRoutes } from "./providers.js";
 import { analyticsRoutes } from "./analytics.js";
 import { claimsRoutes } from "./claims.js";
+import { claimsSubmitRoute } from "./claims-submit.js";
 
 const TEST_API_KEY = `test-key-${randomUUID()}`;
 const TEST_KEY_HASH = createHash("sha256").update(TEST_API_KEY).digest("hex");
@@ -20,6 +23,18 @@ async function buildApp() {
   await app.register(providersRoutes);
   await app.register(analyticsRoutes);
   await app.register(claimsRoutes);
+  return app;
+}
+
+// buildTestApp creates a fresh Fastify instance (no pool.end — caller manages lifecycle)
+async function buildTestApp() {
+  const app = Fastify();
+  await app.register(healthRoutes);
+  await app.register(recordsRoutes);
+  await app.register(providersRoutes);
+  await app.register(analyticsRoutes);
+  await app.register(claimsRoutes);
+  await app.register(claimsSubmitRoute);
   return app;
 }
 
@@ -311,6 +326,129 @@ describe("API integration tests", () => {
       const body = res.json();
       assert.ok(Array.isArray(body));
       assert.ok(body.length <= 1);
+    });
+  });
+
+  // Step 1.1 — auth middleware decorates agentPubkey
+  describe("auth middleware agentPubkey decoration", () => {
+    it("decorates request.agentPubkey from api_keys row", async () => {
+      const testApp = await buildTestApp();
+      const key = `pact_${randomBytes(24).toString("hex")}`;
+      const hash = createHash("sha256").update(key).digest("hex");
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hash, "test-agent", "AgentPubkey111111111111111111111111111111111"],
+      );
+
+      testApp.get("/api/v1/debug/whoami", { preHandler: requireApiKey }, async (req) => {
+        const r = req as FastifyRequest & { agentId: string; agentPubkey: string | null };
+        return { agentId: r.agentId, agentPubkey: r.agentPubkey };
+      });
+
+      const resp = await testApp.inject({
+        method: "GET",
+        url: "/api/v1/debug/whoami",
+        headers: { authorization: `Bearer ${key}` },
+      });
+
+      assert.equal(resp.statusCode, 200);
+      const body = resp.json();
+      assert.equal(body.agentId, "test-agent");
+      assert.equal(body.agentPubkey, "AgentPubkey111111111111111111111111111111111");
+
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hash]);
+      await testApp.close();
+    });
+  });
+
+  // Step 1.7 — records route ignores client-supplied agent_pubkey
+  describe("POST /api/v1/records agent_pubkey binding", () => {
+    it("ignores client-supplied agent_pubkey and uses api_key binding", async () => {
+      const testApp = await buildTestApp();
+      const key = `pact_${randomBytes(24).toString("hex")}`;
+      const hash = createHash("sha256").update(key).digest("hex");
+      const boundPubkey = "BoundPubkey111111111111111111111111111111111";
+      const attackerPubkey = "AttackerPubkey11111111111111111111111111111";
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hash, "test-agent-pubkey", boundPubkey],
+      );
+
+      const hostname = `pubkey-test-${randomUUID()}.example.com`;
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/records",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        payload: {
+          records: [{
+            hostname,
+            endpoint: "/v1",
+            timestamp: new Date().toISOString(),
+            status_code: 200,
+            latency_ms: 50,
+            classification: "success",
+            agent_pubkey: attackerPubkey,
+          }],
+        },
+      });
+
+      assert.equal(resp.statusCode, 200);
+      const stored = await getOne<{ agent_pubkey: string }>(
+        "SELECT agent_pubkey FROM call_records WHERE agent_id = 'test-agent-pubkey' ORDER BY created_at DESC LIMIT 1",
+      );
+      assert.equal(stored?.agent_pubkey, boundPubkey);
+
+      await query("DELETE FROM call_records WHERE agent_id = 'test-agent-pubkey'");
+      await query("DELETE FROM providers WHERE base_url = $1", [hostname]);
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hash]);
+      await testApp.close();
+    });
+  });
+
+  // Step 1.11 — claims-submit auth and ownership checks
+  describe("POST /api/v1/claims/submit auth", () => {
+    it("rejects missing auth with 401", async () => {
+      const testApp = await buildTestApp();
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/claims/submit",
+        payload: { callRecordId: "00000000-0000-0000-0000-000000000000", providerHostname: "x.com" },
+      });
+      assert.equal(resp.statusCode, 401);
+      await testApp.close();
+    });
+
+    it("rejects key/call_record agent mismatch with 403", async () => {
+      const testApp = await buildTestApp();
+      const keyA = `pact_${randomBytes(24).toString("hex")}`;
+      const hashA = createHash("sha256").update(keyA).digest("hex");
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hashA, "agent-a", null],
+      );
+      const provHostname = `mismatch-test-${randomUUID()}.example.com`;
+      const prov = await getOne<{ id: string }>(
+        "INSERT INTO providers (name, base_url) VALUES ($1, $2) RETURNING id",
+        [provHostname, provHostname],
+      );
+      const rec = await getOne<{ id: string }>(
+        `INSERT INTO call_records (provider_id, endpoint, timestamp, status_code,
+           latency_ms, classification, agent_id, agent_pubkey)
+         VALUES ($1, '/v1', NOW(), 500, 100, 'error', 'agent-b', NULL) RETURNING id`,
+        [prov!.id],
+      );
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/claims/submit",
+        headers: { authorization: `Bearer ${keyA}`, "content-type": "application/json" },
+        payload: { callRecordId: rec!.id, providerHostname: provHostname },
+      });
+      assert.equal(resp.statusCode, 403);
+
+      await query("DELETE FROM call_records WHERE id = $1", [rec!.id]);
+      await query("DELETE FROM providers WHERE id = $1", [prov!.id]);
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hashA]);
+      await testApp.close();
     });
   });
 });

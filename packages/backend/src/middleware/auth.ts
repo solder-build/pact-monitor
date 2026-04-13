@@ -19,8 +19,8 @@ export async function requireApiKey(
   const key = header.slice(7);
   const hash = hashKey(key);
 
-  const row = await getOne<{ id: string; label: string }>(
-    "SELECT id, label FROM api_keys WHERE key_hash = $1",
+  const row = await getOne<{ id: string; label: string; agent_pubkey: string | null }>(
+    "SELECT id, label, agent_pubkey FROM api_keys WHERE key_hash = $1",
     [hash],
   );
 
@@ -29,7 +29,12 @@ export async function requireApiKey(
     return;
   }
 
-  (request as FastifyRequest & { agentId: string }).agentId = row.label;
+  const r = request as FastifyRequest & {
+    agentId: string;
+    agentPubkey: string | null;
+  };
+  r.agentId = row.label;
+  r.agentPubkey = row.agent_pubkey;
 }
 
 export { hashKey };

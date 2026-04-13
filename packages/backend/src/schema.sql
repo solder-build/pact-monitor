@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS api_keys (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_pubkey TEXT;
+CREATE INDEX IF NOT EXISTS idx_api_keys_agent_pubkey ON api_keys(agent_pubkey);
+
 CREATE TABLE IF NOT EXISTS claims (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   call_record_id  UUID NOT NULL REFERENCES call_records(id),
