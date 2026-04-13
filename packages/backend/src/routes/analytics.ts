@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { getOne, getMany } from "../db.js";
+import { query, getOne, getMany } from "../db.js";
 
 export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
+  // Network-wide aggregate stats (calls + claims)
   app.get("/api/v1/analytics/summary", async () => {
     const stats = await getOne<{
       total_sdk_requests: string;
@@ -46,6 +47,7 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // Time-bucketed requests + claims
   app.get<{
     Querystring: { granularity?: string; days?: string };
   }>("/api/v1/analytics/timeseries", async (request) => {
@@ -79,5 +81,26 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
         refund_amount: parseInt(r.refund_amount, 10),
       })),
     };
+  });
+
+  // Scorecard SPA event ingestion
+  app.post("/api/v1/analytics/events", async (request, reply) => {
+    const { event_type, event_data, session_id, source } = request.body as {
+      event_type?: string;
+      event_data?: Record<string, unknown>;
+      session_id?: string;
+      source?: string;
+    };
+
+    if (!event_type || typeof event_type !== "string") {
+      return reply.code(400).send({ error: "event_type is required" });
+    }
+
+    await query(
+      "INSERT INTO analytics_events (event_type, event_data, session_id, source) VALUES ($1, $2, $3, $4)",
+      [event_type, JSON.stringify(event_data || {}), session_id || null, source || "scorecard"],
+    );
+
+    return { accepted: true };
   });
 }
