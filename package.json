@@ -10,6 +10,8 @@
     "test": "pnpm run test:sdk && pnpm run test:backend",
     "test:sdk": "pnpm --filter @pact-network/monitor test",
     "test:backend": "pnpm --filter @pact-network/backend test",
+    "test:smoke": "bash scripts/smoke.sh",
+    "test:roundtrip": "pnpm build:sdk && pnpm --filter @pact-network/backend exec tsx ../../scripts/sdk-roundtrip.ts",
     "seed": "pnpm --filter @pact-network/backend seed",
     "generate-key": "pnpm --filter @pact-network/backend generate-key",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
