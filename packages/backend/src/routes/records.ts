@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireApiKey } from "../middleware/auth.js";
 import { query, getOne } from "../db.js";
 import { maybeCreateClaim } from "../utils/claims.js";
@@ -113,5 +113,3 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
-
-type FastifyRequest = import("fastify").FastifyRequest;

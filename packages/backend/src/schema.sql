@@ -30,8 +30,6 @@ CREATE TABLE IF NOT EXISTS call_records (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE call_records ADD COLUMN IF NOT EXISTS agent_pubkey TEXT;
-
 CREATE INDEX IF NOT EXISTS idx_call_records_provider_id ON call_records(provider_id);
 CREATE INDEX IF NOT EXISTS idx_call_records_timestamp ON call_records(timestamp);
 CREATE INDEX IF NOT EXISTS idx_call_records_classification ON call_records(classification);
