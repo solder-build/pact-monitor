@@ -369,9 +369,10 @@ describe("API integration tests", () => {
       const hash = createHash("sha256").update(key).digest("hex");
       const boundPubkey = "BoundPubkey111111111111111111111111111111111";
       const attackerPubkey = "AttackerPubkey11111111111111111111111111111";
+      const agentLabel = "test-agent-pubkey";
       await query(
         "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
-        [hash, "test-agent-pubkey", boundPubkey],
+        [hash, agentLabel, boundPubkey],
       );
 
       const hostname = `pubkey-test-${randomUUID()}.example.com`;
@@ -393,7 +394,6 @@ describe("API integration tests", () => {
       });
 
       assert.equal(resp.statusCode, 200);
-      const agentLabel = "test-agent-pubkey";
       const stored = await getOne<{ agent_pubkey: string }>(
         "SELECT agent_pubkey FROM call_records WHERE agent_id = $1 ORDER BY created_at DESC LIMIT 1",
         [agentLabel],
