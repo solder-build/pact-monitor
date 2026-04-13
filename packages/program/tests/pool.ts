@@ -71,6 +71,42 @@ describe("pact-insurance: pool", () => {
     expect(pool.vault.toString()).to.equal(vaultPda.toString());
   });
 
+  it("updates pool insurance_rate_bps via update_rates", async () => {
+    await program.methods
+      .updateRates(50)
+      .accounts({
+        config: protocolPda,
+        pool: poolPda,
+        authority: authority.publicKey,
+      })
+      .signers([authority])
+      .rpc();
+
+    const pool = await program.account.coveragePool.fetch(poolPda);
+    expect(pool.insuranceRateBps).to.equal(50);
+  });
+
+  it("rejects update_rates from non-authority", async () => {
+    const rando = Keypair.generate();
+    const sig = await provider.connection.requestAirdrop(rando.publicKey, 1_000_000_000);
+    await provider.connection.confirmTransaction(sig);
+
+    try {
+      await program.methods
+        .updateRates(75)
+        .accounts({
+          config: protocolPda,
+          pool: poolPda,
+          authority: rando.publicKey,
+        })
+        .signers([rando])
+        .rpc();
+      expect.fail("should have rejected");
+    } catch (err: any) {
+      expect(String(err)).to.match(/Unauthorized|ConstraintHasOne|has_one/i);
+    }
+  });
+
   it("rejects duplicate pool creation", async () => {
     try {
       await program.methods

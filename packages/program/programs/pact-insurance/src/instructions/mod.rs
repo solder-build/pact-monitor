@@ -6,6 +6,7 @@ pub mod enable_insurance;
 pub mod initialize_protocol;
 pub mod settle_premium;
 pub mod update_config;
+pub mod update_rates;
 pub mod withdraw;
 
 pub use create_pool::*;
@@ -14,4 +15,5 @@ pub use enable_insurance::*;
 pub use initialize_protocol::*;
 pub use settle_premium::*;
 pub use update_config::*;
+pub use update_rates::*;
 pub use withdraw::*;

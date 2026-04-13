@@ -54,4 +54,8 @@ pub mod pact_insurance {
     pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         instructions::withdraw::handler(ctx, amount)
     }
+
+    pub fn update_rates(ctx: Context<UpdateRates>, new_rate_bps: u16) -> Result<()> {
+        instructions::update_rates::handler(ctx, new_rate_bps)
+    }
 }
