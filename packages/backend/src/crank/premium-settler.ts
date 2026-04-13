@@ -16,6 +16,14 @@ interface CallValueRow {
   total: string | null;
 }
 
+interface WatermarkRow {
+  last_settled_at: Date;
+}
+
+// Fallback window when a policy has never been settled before (no row in
+// policy_settlements). First settlement picks up at most this much history.
+const INITIAL_WATERMARK_INTERVAL = "15 minutes";
+
 /**
  * Premium settler (post-pivot, delegation model).
  *
@@ -54,21 +62,61 @@ export async function runPremiumSettler(app: FastifyInstance): Promise<void> {
       const policy = entry.account;
       if (!policy.active) continue;
 
-      // Aggregate recent call_records for this agent/provider.
-      const result = await query<CallValueRow>(
-        `SELECT COALESCE(SUM(cr.payment_amount), 0)::text AS total
-         FROM call_records cr
-         JOIN providers p ON p.id = cr.provider_id
-         WHERE cr.agent_id = $1
-           AND p.base_url = $2
-           AND cr.created_at > NOW() - INTERVAL '15 minutes'
-           AND cr.payment_amount IS NOT NULL`,
-        [policy.agentId, hostname],
+      const policyPdaStr = entry.publicKey.toString();
+      const agentPubkey = (policy.agent as PublicKey).toBase58();
+
+      // Look up the policy's settlement watermark. If absent, treat the
+      // watermark as NOW() - INITIAL_WATERMARK_INTERVAL so first settlement
+      // picks up at most that window of history (and never older than
+      // policy creation itself, since older records won't have this agent
+      // as agent_pubkey).
+      const watermarkResult = await query<WatermarkRow>(
+        `SELECT last_settled_at FROM policy_settlements WHERE policy_pda = $1`,
+        [policyPdaStr],
       );
+      const hasWatermark = watermarkResult.rows.length > 0;
+
+      // Match by agent_pubkey (canonical on-chain identity) rather than
+      // agent_id string, since call_records.agent_id comes from the API
+      // key label middleware and doesn't necessarily match policy.agentId.
+      // The `created_at > watermark` filter ensures each call_record
+      // contributes to exactly one settlement.
+      const sumSql = hasWatermark
+        ? `SELECT COALESCE(SUM(cr.payment_amount), 0)::text AS total
+           FROM call_records cr
+           JOIN providers p ON p.id = cr.provider_id
+           WHERE cr.agent_pubkey = $1
+             AND p.base_url = $2
+             AND cr.created_at > $3
+             AND cr.payment_amount IS NOT NULL`
+        : `SELECT COALESCE(SUM(cr.payment_amount), 0)::text AS total
+           FROM call_records cr
+           JOIN providers p ON p.id = cr.provider_id
+           WHERE cr.agent_pubkey = $1
+             AND p.base_url = $2
+             AND cr.created_at > NOW() - INTERVAL '${INITIAL_WATERMARK_INTERVAL}'
+             AND cr.payment_amount IS NOT NULL`;
+
+      const params: unknown[] = hasWatermark
+        ? [agentPubkey, hostname, watermarkResult.rows[0].last_settled_at]
+        : [agentPubkey, hostname];
+
+      const result = await query<CallValueRow>(sumSql, params);
 
       const callValueStr = result.rows[0]?.total ?? "0";
       const callValue = BigInt(callValueStr);
-      if (callValue === 0n) continue;
+      if (callValue === 0n) {
+        // Still advance the watermark even when there's nothing to settle,
+        // so we don't re-scan the same historical window next cycle.
+        await query(
+          `INSERT INTO policy_settlements (policy_pda, last_settled_at, updated_at)
+           VALUES ($1, NOW(), NOW())
+           ON CONFLICT (policy_pda)
+           DO UPDATE SET last_settled_at = NOW(), updated_at = NOW()`,
+          [policyPdaStr],
+        );
+        continue;
+      }
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,10 +134,20 @@ export async function runPremiumSettler(app: FastifyInstance): Promise<void> {
           })
           .rpc();
 
+        // Only advance the watermark AFTER the on-chain settle succeeds,
+        // so a failed settlement retries the same records next cycle.
+        await query(
+          `INSERT INTO policy_settlements (policy_pda, last_settled_at, updated_at)
+           VALUES ($1, NOW(), NOW())
+           ON CONFLICT (policy_pda)
+           DO UPDATE SET last_settled_at = NOW(), updated_at = NOW()`,
+          [policyPdaStr],
+        );
+
         app.log.info(
           {
             hostname,
-            policy: entry.publicKey.toString(),
+            policy: policyPdaStr,
             callValue: callValue.toString(),
             sig,
           },
@@ -100,12 +158,13 @@ export async function runPremiumSettler(app: FastifyInstance): Promise<void> {
           {
             err,
             hostname,
-            policy: entry.publicKey.toString(),
+            policy: policyPdaStr,
             callValue: callValue.toString(),
           },
           "settle_premium failed for policy",
         );
-        // Per plan: do NOT throw — keep settling other policies.
+        // Do NOT advance the watermark on failure; next cycle will retry.
+        // Do NOT throw — keep settling other policies.
       }
     }
   }

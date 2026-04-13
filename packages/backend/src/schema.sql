@@ -60,6 +60,15 @@ CREATE TABLE IF NOT EXISTS analytics_events (
 CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created ON analytics_events(created_at);
 
+-- Tracks the last time the premium-settler crank settled a given on-chain
+-- policy. The crank uses this as a watermark so each call_record contributes
+-- to exactly one settlement and doesn't get re-charged on subsequent cycles.
+CREATE TABLE IF NOT EXISTS policy_settlements (
+  policy_pda       TEXT PRIMARY KEY,
+  last_settled_at  TIMESTAMPTZ NOT NULL,
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS api_keys (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   key_hash TEXT NOT NULL UNIQUE,

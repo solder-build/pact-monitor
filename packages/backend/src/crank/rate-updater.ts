@@ -16,6 +16,13 @@ const MIN_CHANGE_BPS = 5;
 const MIN_RATE_BPS = 25;
 const MAX_RATE_BPS = 5000;
 
+// Minimum call_records needed in the observation window before we trust
+// the failure rate enough to push a new rate on-chain. Below this, we
+// keep the existing rate. Prevents "1 failed call -> 5000 bps" pathologies.
+// Tune upward for production (e.g. 200+); this floor is pragmatic for
+// devnet/dev environments with low traffic.
+const MIN_SAMPLE_SIZE = 10;
+
 /**
  * Rate updater: recomputes each pool's insurance_rate_bps from observed
  * failure rates in the recent window, and calls update_rates on-chain when
@@ -48,6 +55,13 @@ export async function runRateUpdater(app: FastifyInstance): Promise<void> {
     const total = Number(row?.total ?? 0);
     const failures = Number(row?.failures ?? 0);
     if (total === 0) continue;
+    if (total < MIN_SAMPLE_SIZE) {
+      app.log.debug(
+        { hostname, total, threshold: MIN_SAMPLE_SIZE },
+        "Rate updater: sample size below threshold; keeping current rate",
+      );
+      continue;
+    }
 
     const failureRate = failures / total;
     const proposedRate = computeInsuranceRate(failureRate);
