@@ -4,6 +4,7 @@ export interface PactInsuranceConfig {
   rpcUrl: string;
   programId: string;
   backendUrl?: string;
+  apiKey?: string;
 }
 
 export interface PolicyInfo {

@@ -5,7 +5,7 @@ import {
   getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import { BN } from "@anchor-lang/core";
+import BN from "bn.js";
 import {
   createAnchorClient,
   deriveProtocolPda,
@@ -228,9 +228,14 @@ export class PactInsurance extends EventEmitter {
     if (!this.config.backendUrl) {
       throw new Error("backendUrl required to submit claim");
     }
-    const r = await fetch(`${this.config.backendUrl}/api/v1/claims/submit`, {
+    const trimmedKey = this.config.apiKey?.trim();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (trimmedKey) {
+      headers.Authorization = `Bearer ${trimmedKey}`;
+    }
+    const r = await globalThis.fetch(`${this.config.backendUrl}/api/v1/claims/submit`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ callRecordId, providerHostname }),
     });
     if (!r.ok) {

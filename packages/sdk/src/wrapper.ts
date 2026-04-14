@@ -23,6 +23,12 @@ export class PactMonitor {
       agentPubkey: config.agentPubkey || "",
     };
 
+    if (this.config.syncEnabled && this.config.apiKey && !this.config.agentPubkey) {
+      console.warn(
+        "[pact-monitor] agentPubkey missing — on-chain claims will not be submitted for this agent.",
+      );
+    }
+
     this.storage = new PactStorage(this.config.storagePath || undefined);
 
     if (this.config.syncEnabled && this.config.apiKey) {
@@ -125,7 +131,6 @@ export class PactMonitor {
       classification,
       payment,
       synced: false,
-      agentPubkey: this.config.agentPubkey || null,
     };
 
     this.storage.append(record);

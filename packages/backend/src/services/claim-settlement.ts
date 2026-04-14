@@ -1,4 +1,5 @@
-import { PublicKey, SystemProgram, type TransactionSignature } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, type TransactionSignature } from "@solana/web3.js";
+import { readFileSync } from "fs";
 import BN from "bn.js";
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { createHash } from "crypto";
@@ -11,6 +12,33 @@ import {
   deriveClaimPda,
   getSolanaConfig,
 } from "../utils/solana.js";
+
+let cachedOracleKeypair: Keypair | null = null;
+
+export function getCachedOracleKeypair(): Keypair {
+  if (cachedOracleKeypair) return cachedOracleKeypair;
+  const path = process.env.PACT_ORACLE_KEYPAIR;
+  if (!path) {
+    throw new Error("PACT_ORACLE_KEYPAIR env var not set");
+  }
+  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length !== 64 ||
+    !parsed.every((b) => typeof b === "number" && Number.isInteger(b) && b >= 0 && b <= 255)
+  ) {
+    throw new Error(
+      `Invalid keypair file at ${path}: expected JSON array of 64 bytes (0-255)`,
+    );
+  }
+  cachedOracleKeypair = Keypair.fromSecretKey(Uint8Array.from(parsed));
+  return cachedOracleKeypair;
+}
+
+// Exposed for tests only.
+export function __resetOracleKeypairCacheForTests(): void {
+  cachedOracleKeypair = null;
+}
 
 export interface CallRecord {
   id: string;

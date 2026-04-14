@@ -1,10 +1,11 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   submitClaimOnChain,
   hasActiveOnChainPolicy,
   type CallRecord,
 } from "../services/claim-settlement.js";
 import { query } from "../db.js";
+import { requireApiKey } from "../middleware/auth.js";
 
 interface CallRecordRow {
   id: string;
@@ -21,6 +22,7 @@ interface CallRecordRow {
 export async function claimsSubmitRoute(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { callRecordId: string; providerHostname: string } }>(
     "/api/v1/claims/submit",
+    { preHandler: requireApiKey },
     async (request, reply) => {
       const { callRecordId, providerHostname } = request.body ?? {};
       if (!callRecordId || !providerHostname) {
@@ -29,13 +31,10 @@ export async function claimsSubmitRoute(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Note: call_records does not currently have an `agent_pubkey` or
-      // `api_provider` column — we select with COALESCE/JOIN fallbacks so
-      // this route degrades gracefully until the Phase 3 migration lands.
       const result = await query<CallRecordRow>(
         `SELECT cr.id,
                 cr.agent_id,
-                NULL::text AS agent_pubkey,
+                cr.agent_pubkey,
                 p.base_url AS api_provider,
                 cr.payment_amount,
                 cr.latency_ms,
@@ -53,6 +52,13 @@ export async function claimsSubmitRoute(app: FastifyInstance): Promise<void> {
       }
 
       const row = result.rows[0];
+      const authed = request as FastifyRequest & { agentId: string };
+      if (authed.agentId !== row.agent_id) {
+        return reply.code(403).send({ error: "Forbidden" });
+      }
+      if (providerHostname !== row.api_provider) {
+        return reply.code(400).send({ error: "providerHostname does not match call record" });
+      }
       if (!row.agent_pubkey) {
         return reply.code(400).send({ error: "Call record missing agent_pubkey" });
       }

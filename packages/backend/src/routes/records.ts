@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireApiKey } from "../middleware/auth.js";
 import { query, getOne } from "../db.js";
 import { maybeCreateClaim } from "../utils/claims.js";
@@ -18,7 +18,6 @@ interface RecordInput {
   recipient_address?: string | null;
   tx_hash?: string | null;
   settlement_success?: boolean | null;
-  agent_pubkey?: string | null;
 }
 
 interface RecordsBody {
@@ -50,7 +49,12 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: "records array is required" });
       }
 
-      const agentId = (request as FastifyRequest & { agentId: string }).agentId;
+      const authed = request as FastifyRequest & {
+        agentId: string;
+        agentPubkey: string | null;
+      };
+      const agentId = authed.agentId;
+      const agentPubkey = authed.agentPubkey;
       const providerIds = new Set<string>();
       let accepted = 0;
 
@@ -72,7 +76,7 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
             rec.payment_amount ?? null, rec.payment_asset ?? null,
             rec.payment_network ?? null, rec.payer_address ?? null,
             rec.recipient_address ?? null, rec.tx_hash ?? null,
-            rec.settlement_success ?? null, agentId, rec.agent_pubkey ?? null,
+            rec.settlement_success ?? null, agentId, agentPubkey,
           ],
         );
 
@@ -84,7 +88,7 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
           agentId,
           classification: rec.classification,
           paymentAmount: rec.payment_amount ?? null,
-          agentPubkey: rec.agent_pubkey ?? null,
+          agentPubkey,
           providerHostname: rec.hostname,
           latencyMs: rec.latency_ms,
           statusCode: rec.status_code,
@@ -109,5 +113,3 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
-
-type FastifyRequest = import("fastify").FastifyRequest;

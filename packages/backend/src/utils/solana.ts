@@ -87,12 +87,20 @@ export function deriveClaimPda(
 }
 
 export function getSolanaConfig(): SolanaConfig {
+  const programId = process.env.SOLANA_PROGRAM_ID;
+  if (!programId) {
+    throw new Error("SOLANA_PROGRAM_ID env var not set");
+  }
+  const usdcMint = process.env.USDC_MINT;
+  if (!usdcMint) {
+    throw new Error("USDC_MINT env var not set");
+  }
   return {
-    rpcUrl: process.env.SOLANA_RPC_URL!,
-    programId: process.env.SOLANA_PROGRAM_ID!,
+    rpcUrl: process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899",
+    programId,
     oracleKeypairPath: process.env.ORACLE_KEYPAIR_PATH,
     oracleKeypairBase58: process.env.ORACLE_KEYPAIR_BASE58,
     treasuryPubkey: process.env.TREASURY_PUBKEY,
-    usdcMint: process.env.USDC_MINT!,
+    usdcMint,
   };
 }
