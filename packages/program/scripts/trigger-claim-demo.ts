@@ -1,33 +1,31 @@
 // Trigger a complete failure-to-refund flow against an existing devnet pool.
 //
+// Lower-level plumbing test: POSTs a hand-rolled fake failure record directly
+// to /api/v1/records, skipping the real SDK wrapper. Useful for testing the
+// backend ingestion + auto-claim path in isolation. For the full SDK-driven
+// happy+bad case demo, see samples/demo/insured-agent.ts (that one uses
+// PactMonitor.fetch() against real URLs).
+//
 // What this does (in order):
 //   1. Generate a throwaway agent keypair
 //   2. Fund it with SOL (from phantom) + 5 test USDC (minted from phantom)
 //   3. Run `spl_token::approve` + `enable_insurance` as a single atomic tx
 //      to create an on-chain Policy for (agent, pool)
-//   4. Ensure a row exists in backend `providers` for the target hostname
-//   5. Generate a fresh Pact API key + insert into backend
-//   6. POST a fake failed call record to backend /api/v1/records with the
-//      agent_pubkey attached and classification=error
-//   7. Backend's `maybeCreateClaim` detects the failure, sees the active
+//   4. Provision a Pact API key via POST /api/v1/admin/keys (HTTP, no pg)
+//   5. POST a fake failed call record to backend /api/v1/records
+//   6. Backend's `maybeCreateClaim` detects the failure, sees the active
 //      policy, and calls `submit_claim` on-chain
-//   8. Fetch the resulting Claim PDA and the agent's USDC balance to
-//      prove the refund actually settled
+//   7. Re-read on-chain pool state + agent ATA to verify the refund landed
 //
-// Usage (from packages/program/):
-//   pnpm dlx tsx scripts/trigger-claim-demo.ts <hostname>
-//
-// Examples:
-//   pnpm dlx tsx scripts/trigger-claim-demo.ts api.coingecko.com
-//   pnpm dlx tsx scripts/trigger-claim-demo.ts api.dexscreener.com
+// Usage (from packages/backend/):
+//   pnpm exec tsx ../program/scripts/trigger-claim-demo.ts <hostname>
 //
 // Pre-reqs:
 //   - devnet pool must already exist for <hostname> (run seed-devnet-pools.ts)
 //   - backend must be running at BACKEND_URL (default http://localhost:3001)
-//   - postgres must be reachable for the backend
+//   - ADMIN_TOKEN env var must match the backend's ADMIN_TOKEN
 //   - phantom keypair at ~/.config/solana/phantom-devnet.json with >= 0.3 SOL
 //   - config.usdcMint must be a mint where phantom is mint authority
-//     (the test mint GkCQc93QUGQC7GG5WvtZowgR6bjNZnF4QLbZmtxEtLW5 from smoke test)
 
 import * as anchor from "@anchor-lang/core";
 import { Program, BN } from "@anchor-lang/core";
@@ -51,10 +49,6 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { createHash } from "crypto";
-import pg from "pg";
-
-const { Client } = pg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,8 +56,7 @@ const __dirname = path.dirname(__filename);
 const RPC_URL = "https://api.devnet.solana.com";
 const PROGRAM_ID = new PublicKey("2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3");
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:3001";
-const DATABASE_URL =
-  process.env.DATABASE_URL ?? "postgresql://pact:pact@localhost:5433/pact";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
 
 const ALLOWANCE_USDC = 5_000_000n; // 5 USDC delegation cap
 const AGENT_INITIAL_USDC = 5_000_000n; // 5 USDC in agent wallet
@@ -218,28 +211,33 @@ async function main() {
   const enableSig = await provider.sendAndConfirm(enableTx, [agent]);
   log("enable", `policy active (sig ${enableSig})`);
 
-  // --- Step 6: open a DB client for the api_keys insert below.
-  // We intentionally do NOT pre-create a providers row — the POST /api/v1/records
-  // handler's findOrCreateProvider does it automatically, and if an admin has
-  // seeded a pretty name/category via seed.ts, we want to preserve it.
-  const pgClient = new Client({ connectionString: DATABASE_URL });
-  await pgClient.connect();
-
-  // --- Step 7: generate a Pact API key for this run, BOUND to the agent pubkey.
-  // Task 1's security hardening made agent_pubkey a server-side binding — the
-  // backend now reads it from api_keys, not from the record body. Without this
-  // bind, maybeCreateClaim will early-return before attempting the on-chain
-  // submit (input.agentPubkey is null).
-  const apiKey = `pact_demo_${Math.random().toString(36).slice(2, 14)}`;
-  const keyHash = createHash("sha256").update(apiKey).digest("hex");
-  await pgClient.query(
-    `INSERT INTO api_keys (key_hash, label, agent_pubkey)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (key_hash) DO NOTHING`,
-    [keyHash, `demo-claim-${Date.now()}`, agent.publicKey.toBase58()],
-  );
-  log("db", `api key: ${apiKey.slice(0, 16)}... bound to ${agent.publicKey.toBase58()}`);
-  await pgClient.end();
+  // --- Step 6: provision a Pact API key via the admin HTTP endpoint.
+  // Task 1's security hardening made agent_pubkey a server-side binding —
+  // the backend reads it from api_keys, not from the record body. The
+  // admin endpoint inserts the api_keys row with the correct binding.
+  if (!ADMIN_TOKEN) {
+    console.error(
+      "[FAIL] ADMIN_TOKEN env var not set. Run with: ADMIN_TOKEN=<token> pnpm exec tsx ..."
+    );
+    process.exit(1);
+  }
+  const keyRes = await fetch(`${BACKEND_URL}/api/v1/admin/keys`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${ADMIN_TOKEN}`,
+    },
+    body: JSON.stringify({
+      label: `demo-claim-${Date.now()}`,
+      agent_pubkey: agent.publicKey.toBase58(),
+    }),
+  });
+  if (!keyRes.ok) {
+    console.error(`[FAIL] admin /keys: ${keyRes.status} ${await keyRes.text()}`);
+    process.exit(1);
+  }
+  const { apiKey } = (await keyRes.json()) as { apiKey: string };
+  log("auth", `provisioned api key ${apiKey.slice(0, 16)}... bound to ${agent.publicKey.toBase58()}`);
 
   // --- Step 8: POST a fake failed call record to the backend
   const callRecord = {
@@ -260,6 +258,17 @@ async function main() {
     agent_pubkey: agent.publicKey.toBase58(),
   };
 
+  // --- Step 8: snapshot pool state + agent balance BEFORE posting the
+  // failure record. We verify the end-to-end settlement by reading on-chain
+  // state before/after and checking the delta. No DB reads.
+  const poolBefore: any = await (program.account as any).coveragePool.fetch(poolPda);
+  const agentBalanceBefore = await getAccount(connection, agentAta);
+  log(
+    "pool.before",
+    `total_claims_paid=${(Number(poolBefore.totalClaimsPaid) / 1e6).toFixed(4)} USDC`,
+  );
+  log("agent.before", `balance=${agentBalanceBefore.amount.toString()} raw USDC`);
+
   log("post", "POST /api/v1/records");
   const res = await fetch(`${BACKEND_URL}/api/v1/records`, {
     method: "POST",
@@ -276,40 +285,41 @@ async function main() {
     process.exit(1);
   }
 
-  // The backend's maybeCreateClaim is async but not awaited through the HTTP
-  // response path — it runs inline during records.ts handling. Give it a
-  // moment to finish the on-chain submit_claim.
+  // The backend's maybeCreateClaim runs inline during records.ts handling
+  // but the records POST response returns before the on-chain tx confirms.
+  // Give it a moment to finish the submit_claim.
   log("wait", "waiting 8s for on-chain claim settlement...");
   await new Promise((r) => setTimeout(r, 8000));
 
-  // --- Step 9: query Postgres for the claim row (JOIN on hostname since
-  // findOrCreateProvider creates the providers row asynchronously inside the
-  // records POST handler — we don't pre-create it here).
-  const verifyClient = new Client({ connectionString: DATABASE_URL });
-  await verifyClient.connect();
-  const claimRow = await verifyClient.query(
-    `SELECT c.id, c.call_record_id, c.status, c.refund_amount, c.tx_hash, c.settlement_slot
-     FROM claims c
-     JOIN providers p ON p.id = c.provider_id
-     WHERE p.base_url = $1
-     ORDER BY c.created_at DESC LIMIT 1`,
-    [hostname],
-  );
-  await verifyClient.end();
+  // --- Step 9: re-read pool state + agent ATA balance on-chain. Diff both
+  // against the snapshot to verify settlement. A successful refund shows up
+  // as pool.total_claims_paid increasing AND agent.amount increasing by the
+  // same amount (modulo aggregate cap / max_coverage_per_call).
+  const poolAfter: any = await (program.account as any).coveragePool.fetch(poolPda);
+  const agentBalanceAfter = await getAccount(connection, agentAta);
+  const poolClaimsDelta =
+    Number(poolAfter.totalClaimsPaid) - Number(poolBefore.totalClaimsPaid);
+  const agentBalanceDelta =
+    Number(agentBalanceAfter.amount) - Number(agentBalanceBefore.amount);
 
-  if (claimRow.rows.length === 0) {
-    console.error("[FAIL] no claim row found in backend DB");
+  log(
+    "pool.after",
+    `total_claims_paid=${(Number(poolAfter.totalClaimsPaid) / 1e6).toFixed(4)} USDC`,
+  );
+  log("agent.after", `balance=${agentBalanceAfter.amount.toString()} raw USDC`);
+  log("delta", `pool.total_claims_paid: +${(poolClaimsDelta / 1e6).toFixed(4)} USDC`);
+  log("delta", `agent.amount:           +${(agentBalanceDelta / 1e6).toFixed(4)} USDC`);
+
+  if (poolClaimsDelta <= 0) {
+    console.error("[FAIL] pool.total_claims_paid did not increase — claim never settled on-chain");
     process.exit(1);
   }
-  const claim = claimRow.rows[0];
-  log("db", `claim row status: ${claim.status}`);
-  log("db", `claim refund_amount: ${claim.refund_amount}`);
-  log("db", `claim tx_hash: ${claim.tx_hash ?? "<none>"}`);
-
-  // --- Step 10: verify agent's USDC balance increased by refund
-  const agentBalance = await getAccount(connection, agentAta);
-  log("verify", `agent final USDC balance: ${agentBalance.amount.toString()}`);
-  log("verify", `agent delegated_amount:   ${agentBalance.delegatedAmount.toString()}`);
+  if (agentBalanceDelta !== poolClaimsDelta) {
+    console.error(
+      `[FAIL] agent balance delta (${agentBalanceDelta}) != pool claims delta (${poolClaimsDelta})`,
+    );
+    process.exit(1);
+  }
 
   console.log("\n=== DEMO_DONE ===");
   console.log(`DEMO_HOSTNAME=${hostname}`);
@@ -319,13 +329,10 @@ async function main() {
   console.log(`DEMO_POOL_PDA=${poolPda.toBase58()}`);
   console.log(`DEMO_ENABLE_TX=${enableSig}`);
   console.log(`DEMO_ENABLE_EXPLORER=https://explorer.solana.com/tx/${enableSig}?cluster=devnet`);
-  if (claim.tx_hash) {
-    console.log(`DEMO_CLAIM_TX=${claim.tx_hash}`);
-    console.log(`DEMO_CLAIM_EXPLORER=https://explorer.solana.com/tx/${claim.tx_hash}?cluster=devnet`);
-  }
-  console.log(`DEMO_CLAIM_STATUS=${claim.status}`);
-  console.log(`DEMO_REFUND_AMOUNT=${claim.refund_amount}`);
-  console.log(`DEMO_AGENT_FINAL_BALANCE=${agentBalance.amount.toString()}`);
+  console.log(`DEMO_POOL_CLAIMS_DELTA_USDC=${(poolClaimsDelta / 1e6).toFixed(4)}`);
+  console.log(`DEMO_AGENT_BALANCE_DELTA_USDC=${(agentBalanceDelta / 1e6).toFixed(4)}`);
+  console.log(`DEMO_AGENT_FINAL_BALANCE=${agentBalanceAfter.amount.toString()}`);
+  console.log("[verdict] REFUND LANDED ON-CHAIN");
   console.log("\nOpen the scorecard and go to /pool/" + encodeURIComponent(hostname));
   console.log("The pool detail page should now show 1 active policy + this refund in Recent Claims.");
 }
