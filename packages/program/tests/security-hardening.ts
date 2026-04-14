@@ -248,7 +248,7 @@ describe("pact-insurance: security hardening", () => {
         .rpc();
       expect.fail("Should have rejected");
     } catch (err: any) {
-      expect(String(err)).to.match(/Unauthorized|ConstraintHasOne|has_one/i);
+      expect(String(err)).to.match(/Unauthorized/);
     }
   });
 });
