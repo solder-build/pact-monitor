@@ -21,7 +21,6 @@ pub struct SubmitClaim<'info> {
     #[account(
         seeds = [ProtocolConfig::SEED],
         bump = config.bump,
-        has_one = authority @ PactError::Unauthorized,
         constraint = !config.paused @ PactError::ProtocolPaused,
     )]
     pub config: Box<Account<'info, ProtocolConfig>>,
@@ -55,7 +54,7 @@ pub struct SubmitClaim<'info> {
 
     #[account(
         init,
-        payer = authority,
+        payer = oracle,
         space = 8 + Claim::INIT_SPACE,
         seeds = [
             Claim::SEED_PREFIX,
@@ -73,8 +72,11 @@ pub struct SubmitClaim<'info> {
     )]
     pub agent_token_account: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut)]
-    pub authority: Signer<'info>,
+    #[account(
+        mut,
+        constraint = oracle.key() == config.oracle @ PactError::UnauthorizedOracle,
+    )]
+    pub oracle: Signer<'info>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,

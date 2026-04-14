@@ -76,4 +76,7 @@ pub enum PactError {
 
     #[msg("Unauthorized deployer")]
     UnauthorizedDeployer,
+
+    #[msg("Unauthorized oracle")]
+    UnauthorizedOracle,
 }

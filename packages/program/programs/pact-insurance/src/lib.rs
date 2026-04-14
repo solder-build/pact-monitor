@@ -37,6 +37,10 @@ pub mod pact_insurance {
         instructions::update_config::handler(ctx, args)
     }
 
+    pub fn update_oracle(ctx: Context<UpdateOracle>, new_oracle: Pubkey) -> Result<()> {
+        instructions::update_oracle::handler(ctx, new_oracle)
+    }
+
     pub fn create_pool(
         ctx: Context<CreatePool>,
         args: CreatePoolArgs,

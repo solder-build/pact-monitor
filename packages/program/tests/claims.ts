@@ -27,6 +27,7 @@ describe("pact-insurance: claims", () => {
 
   let protocolPda: PublicKey;
   let authority: Keypair;
+  let oracle: Keypair;
   let usdcMint: PublicKey;
 
   const hostname = "claim-test.example.com";
@@ -48,6 +49,7 @@ describe("pact-insurance: claims", () => {
     const handles = await getOrInitProtocol(program, provider);
     protocolPda = handles.protocolPda;
     authority = handles.authority;
+    oracle = handles.oracle;
     usdcMint = handles.usdcMint;
 
     [poolPda] = PublicKey.findProgramAddressSync(
@@ -218,11 +220,11 @@ describe("pact-insurance: claims", () => {
         policy: policyPda,
         claim: claimPda,
         agentTokenAccount: agentAta,
-        authority: authority.publicKey,
+        oracle: oracle.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
-      .signers([authority])
+      .signers([oracle])
       .rpc();
 
     const after = await getAccount(provider.connection, agentAta);
@@ -266,11 +268,11 @@ describe("pact-insurance: claims", () => {
           policy: policyPda,
           claim: claimPda,
           agentTokenAccount: agentAta,
-          authority: authority.publicKey,
+          oracle: oracle.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .signers([authority])
+        .signers([oracle])
         .rpc();
       expect.fail("Should have rejected duplicate claim");
     } catch (err: any) {
@@ -308,11 +310,11 @@ describe("pact-insurance: claims", () => {
           policy: policyPda,
           claim: oldClaimPda,
           agentTokenAccount: agentAta,
-          authority: authority.publicKey,
+          oracle: oracle.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .signers([authority])
+        .signers([oracle])
         .rpc();
       expect.fail("Should have rejected stale claim");
     } catch (err: any) {
