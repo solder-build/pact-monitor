@@ -38,7 +38,6 @@ import "dotenv/config";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { createHash, randomBytes } from "crypto";
 import {
   Connection,
   Keypair,
@@ -57,10 +56,7 @@ import {
 import * as anchor from "@anchor-lang/core";
 import { Program } from "@anchor-lang/core";
 import BN from "bn.js";
-import pg from "pg";
 import { pactMonitor } from "@pact-network/monitor";
-
-const { Client } = pg;
 
 // -------- config --------
 
@@ -78,8 +74,10 @@ const PROGRAM_ID = new PublicKey(
   process.env.SOLANA_PROGRAM_ID || "2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3",
 );
 const BACKEND_URL = process.env.PACT_BACKEND_URL || "http://localhost:3001";
-const DATABASE_URL =
-  process.env.DATABASE_URL || "postgresql://pact:pact@localhost:5433/pact";
+// Admin token for provisioning an API key at demo start. Matches ADMIN_TOKEN
+// in the backend env — if unset, the script falls back to PACT_API_KEY env
+// var (pre-provisioned out of band by an admin).
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 
 const PHANTOM_PATH = path.join(os.homedir(), ".config/solana/phantom-devnet.json");
 const ORACLE_PATH = path.resolve(
@@ -137,22 +135,42 @@ async function fundFromPhantom(
 }
 
 async function ensureApiKey(agentPubkey: string): Promise<string> {
+  // 1. If an API key is already provisioned out of band (the usual
+  //    production shape), just use it.
   const existing = process.env.PACT_API_KEY;
-  if (existing && existing !== "pact_your_key_here") return existing;
+  if (existing && existing !== "pact_your_key_here") {
+    log("auth", `using pre-provisioned PACT_API_KEY ${existing.slice(0, 20)}...`);
+    return existing;
+  }
 
-  // Self-serve: generate a key and insert into backend, BOUND to the agent
-  // pubkey (Task 1 reads agent_pubkey from the api_keys row server-side).
-  const pgClient = new Client({ connectionString: DATABASE_URL });
-  await pgClient.connect();
-  const apiKey = `pact_demo_${randomBytes(6).toString("hex")}`;
-  const keyHash = createHash("sha256").update(apiKey).digest("hex");
-  await pgClient.query(
-    `INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3) ON CONFLICT (key_hash) DO NOTHING`,
-    [keyHash, `insured-agent-demo-${Date.now()}`, agentPubkey],
-  );
-  await pgClient.end();
-  log("auth", `self-generated api key ${apiKey.slice(0, 20)}... bound to ${agentPubkey}`);
-  return apiKey;
+  // 2. Otherwise, call the admin endpoint to provision a fresh key bound to
+  //    this agent pubkey. Requires ADMIN_TOKEN env var to match the backend.
+  //    No direct Postgres access — the demo is a pure SDK/HTTP consumer.
+  if (!ADMIN_TOKEN) {
+    throw new Error(
+      "No PACT_API_KEY and no ADMIN_TOKEN set. Either (a) pre-provision an API key " +
+        "via `pnpm --filter @pact-network/backend exec tsx src/scripts/generate-key.ts " +
+        "<label> --agent-pubkey <pubkey>` and set PACT_API_KEY, or (b) set ADMIN_TOKEN " +
+        "to the same value the backend sees so this demo can call POST /api/v1/admin/keys."
+    );
+  }
+  const label = `insured-agent-demo-${Date.now()}`;
+  const res = await globalThis.fetch(`${BACKEND_URL}/api/v1/admin/keys`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${ADMIN_TOKEN}`,
+    },
+    body: JSON.stringify({ label, agent_pubkey: agentPubkey }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `admin /keys provisioning failed: ${res.status} ${await res.text()}`
+    );
+  }
+  const body = (await res.json()) as { apiKey: string };
+  log("auth", `provisioned api key ${body.apiKey.slice(0, 20)}... bound to ${agentPubkey}`);
+  return body.apiKey;
 }
 
 // NOTE: no ensureProviderRow helper. The backend's findOrCreateProvider

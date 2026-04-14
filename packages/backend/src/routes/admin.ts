@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { getOne, getMany } from "../db.js";
+import { randomBytes } from "crypto";
+import { getOne, getMany, query } from "../db.js";
+import { hashKey } from "../middleware/auth.js";
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 
@@ -239,5 +241,38 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       total_lost: parseInt(r.total_lost, 10),
       settlement_failures: parseInt(r.settlement_failures, 10),
     }));
+  });
+
+  // Provision a new API key bound to an agent pubkey. Used by onboarding
+  // flows (and the samples/demo/insured-agent.ts script) instead of direct
+  // Postgres writes. An agent SDK consumer never touches the DB — they call
+  // this endpoint once, store the returned key, and use it as the Bearer
+  // token for subsequent POST /api/v1/records calls.
+  app.post<{
+    Body: { label: string; agent_pubkey: string };
+  }>("/api/v1/admin/keys", async (request, reply) => {
+    const body = request.body ?? { label: "", agent_pubkey: "" };
+    if (!body.label || typeof body.label !== "string") {
+      return reply.code(400).send({ error: "label is required" });
+    }
+    if (!body.agent_pubkey || typeof body.agent_pubkey !== "string") {
+      return reply.code(400).send({ error: "agent_pubkey is required" });
+    }
+    // Basic base58 length sanity check (32-byte Solana pubkey = 43-44 chars).
+    if (body.agent_pubkey.length < 32 || body.agent_pubkey.length > 48) {
+      return reply.code(400).send({ error: "agent_pubkey is not a plausible Solana pubkey" });
+    }
+
+    const apiKey = `pact_${randomBytes(24).toString("hex")}`;
+    const keyHash = hashKey(apiKey);
+    await query(
+      "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+      [keyHash, body.label, body.agent_pubkey],
+    );
+    return reply.code(201).send({
+      apiKey,
+      label: body.label,
+      agent_pubkey: body.agent_pubkey,
+    });
   });
 }
