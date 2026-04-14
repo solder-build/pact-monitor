@@ -144,10 +144,12 @@ async function main() {
   );
 
   const approveIx = createApproveInstruction(agentAta, poolPda, agent.publicKey, ALLOWANCE_USDC);
+  // H-05: expires_at must be strictly in the future.
+  const expiresAt = new BN(Math.floor(Date.now() / 1000) + 30 * 86400);
   const enableIx = await (program.methods as any)
     .enableInsurance({
       agentId: `prem-${Date.now().toString(36)}`,
-      expiresAt: new BN(0),
+      expiresAt,
     })
     .accounts({
       config: protocolPda,

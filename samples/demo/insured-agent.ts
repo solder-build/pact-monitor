@@ -269,10 +269,11 @@ async function main() {
     agent.publicKey,
     ALLOWANCE_USDC,
   );
+  // H-05: expires_at must be strictly in the future.
   const enableIx = await (program.methods as any)
     .enableInsurance({
       agentId: `demo-${Date.now().toString(36)}`,
-      expiresAt: new BN(0),
+      expiresAt: new BN(Math.floor(Date.now() / 1000) + 30 * 86400),
     })
     .accounts({
       config: protocolPda,

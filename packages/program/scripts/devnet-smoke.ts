@@ -516,10 +516,11 @@ async function main() {
       agent.publicKey,
       10_000_000
     );
+    // H-05: expires_at must be strictly in the future.
     const enableIx = await (program.methods as any)
       .enableInsurance({
         agentId: "smoke-agent",
-        expiresAt: new BN(0),
+        expiresAt: new BN(Math.floor(Date.now() / 1000) + 30 * 86400),
       })
       .accounts({
         config: protocolPda,
