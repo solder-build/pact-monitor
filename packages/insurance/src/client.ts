@@ -228,11 +228,12 @@ export class PactInsurance extends EventEmitter {
     if (!this.config.backendUrl) {
       throw new Error("backendUrl required to submit claim");
     }
+    const trimmedKey = this.config.apiKey?.trim();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (this.config.apiKey) {
-      headers.Authorization = `Bearer ${this.config.apiKey}`;
+    if (trimmedKey) {
+      headers.Authorization = `Bearer ${trimmedKey}`;
     }
-    const r = await fetch(`${this.config.backendUrl}/api/v1/claims/submit`, {
+    const r = await globalThis.fetch(`${this.config.backendUrl}/api/v1/claims/submit`, {
       method: "POST",
       headers,
       body: JSON.stringify({ callRecordId, providerHostname }),
