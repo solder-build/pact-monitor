@@ -22,6 +22,11 @@ pub struct UpdateRates<'info> {
 }
 
 pub fn handler(ctx: Context<UpdateRates>, new_rate_bps: u16) -> Result<()> {
+    require!(new_rate_bps <= 10_000, PactError::RateOutOfBounds);
+    require!(
+        new_rate_bps >= ctx.accounts.pool.min_premium_bps,
+        PactError::RateBelowFloor
+    );
     let pool = &mut ctx.accounts.pool;
     let clock = Clock::get()?;
     pool.insurance_rate_bps = new_rate_bps;

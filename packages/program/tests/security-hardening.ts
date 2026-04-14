@@ -431,4 +431,48 @@ describe("pact-insurance: security hardening", () => {
       expect(String(err)).to.match(/FrozenConfigField/);
     }
   });
+
+  it("H-04: update_rates rejects rate > 10_000 bps", async () => {
+    try {
+      await program.methods
+        .updateRates(10_001)
+        .accounts({
+          config: protocolPda,
+          pool: poolPda,
+          authority: authority.publicKey,
+        })
+        .signers([authority])
+        .rpc();
+      expect.fail("Should have rejected");
+    } catch (err: any) {
+      expect(String(err)).to.match(/RateOutOfBounds/);
+    }
+  });
+
+  it("H-04: update_rates rejects rate below pool.min_premium_bps", async () => {
+    // Fetch the current pool state to know what its min_premium_bps is.
+    const pool = await program.account.coveragePool.fetch(poolPda);
+    const minPremium = pool.minPremiumBps;
+    if (minPremium === 0) {
+      // If min_premium_bps is 0, no value is below it. Skip with a note.
+      // The security-hardening pool inherits the protocol default which should
+      // be > 0 (DEFAULT_MIN_PREMIUM_BPS = 5), so this branch is defensive.
+      return;
+    }
+    const belowFloor = minPremium - 1;
+    try {
+      await program.methods
+        .updateRates(belowFloor)
+        .accounts({
+          config: protocolPda,
+          pool: poolPda,
+          authority: authority.publicKey,
+        })
+        .signers([authority])
+        .rpc();
+      expect.fail("Should have rejected");
+    } catch (err: any) {
+      expect(String(err)).to.match(/RateBelowFloor/);
+    }
+  });
 });

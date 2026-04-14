@@ -82,4 +82,9 @@ pub enum PactError {
 
     #[msg("Field is frozen after protocol initialization")]
     FrozenConfigField,
+
+    #[msg("Rate exceeds maximum of 10000 bps")]
+    RateOutOfBounds,
+    #[msg("Rate below pool minimum premium bps")]
+    RateBelowFloor,
 }
