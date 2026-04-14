@@ -165,17 +165,11 @@ async function main() {
   const enableSig = await provider.sendAndConfirm(enableTx, [agent]);
   log("enable", `policy active (sig ${enableSig.slice(0, 16)}...)`);
 
-  // Backend provider row + api key
+  // Backend api key insert. Provider row is auto-created by POST /api/v1/records
+  // via findOrCreateProvider; no pre-insert needed (and skipping it preserves
+  // any pretty name/category seeded by src/scripts/seed.ts).
   const pgClient = new Client({ connectionString: DATABASE_URL });
   await pgClient.connect();
-  const providerRow = await pgClient.query(
-    `INSERT INTO providers (name, category, base_url)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (base_url) DO UPDATE SET name = EXCLUDED.name
-     RETURNING id`,
-    [hostname, "Demo", hostname],
-  );
-  const providerId = providerRow.rows[0].id;
 
   const apiKey = `pact_prem_${Math.random().toString(36).slice(2, 14)}`;
   const keyHash = createHash("sha256").update(apiKey).digest("hex");
@@ -186,7 +180,7 @@ async function main() {
     [keyHash, `prem-demo-${Date.now()}`, agent.publicKey.toBase58()],
   );
   await pgClient.end();
-  log("db", `provider ${providerId.slice(0, 8)}, api key ${apiKey.slice(0, 16)}...`);
+  log("db", `api key ${apiKey.slice(0, 16)}... bound to ${agent.publicKey.toBase58()}`);
 
   // POST N successful call records
   const records = [];

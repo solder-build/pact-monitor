@@ -218,18 +218,12 @@ async function main() {
   const enableSig = await provider.sendAndConfirm(enableTx, [agent]);
   log("enable", `policy active (sig ${enableSig})`);
 
-  // --- Step 6: ensure a provider row exists in backend (so call_records FK resolves)
+  // --- Step 6: open a DB client for the api_keys insert below.
+  // We intentionally do NOT pre-create a providers row — the POST /api/v1/records
+  // handler's findOrCreateProvider does it automatically, and if an admin has
+  // seeded a pretty name/category via seed.ts, we want to preserve it.
   const pgClient = new Client({ connectionString: DATABASE_URL });
   await pgClient.connect();
-  const providerRow = await pgClient.query(
-    `INSERT INTO providers (name, category, base_url)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (base_url) DO UPDATE SET name = EXCLUDED.name
-     RETURNING id`,
-    [hostname, "Demo", hostname],
-  );
-  const providerId = providerRow.rows[0].id;
-  log("db", `provider row: ${providerId}`);
 
   // --- Step 7: generate a Pact API key for this run, BOUND to the agent pubkey.
   // Task 1's security hardening made agent_pubkey a server-side binding — the
@@ -288,15 +282,18 @@ async function main() {
   log("wait", "waiting 8s for on-chain claim settlement...");
   await new Promise((r) => setTimeout(r, 8000));
 
-  // --- Step 9: query Postgres for the claim row
+  // --- Step 9: query Postgres for the claim row (JOIN on hostname since
+  // findOrCreateProvider creates the providers row asynchronously inside the
+  // records POST handler — we don't pre-create it here).
   const verifyClient = new Client({ connectionString: DATABASE_URL });
   await verifyClient.connect();
   const claimRow = await verifyClient.query(
-    `SELECT id, call_record_id, status, refund_amount, tx_hash, settlement_slot
-     FROM claims
-     WHERE provider_id = $1
-     ORDER BY created_at DESC LIMIT 1`,
-    [providerId],
+    `SELECT c.id, c.call_record_id, c.status, c.refund_amount, c.tx_hash, c.settlement_slot
+     FROM claims c
+     JOIN providers p ON p.id = c.provider_id
+     WHERE p.base_url = $1
+     ORDER BY c.created_at DESC LIMIT 1`,
+    [hostname],
   );
   await verifyClient.end();
 

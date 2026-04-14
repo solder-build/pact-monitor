@@ -75,7 +75,7 @@ const INITIAL_USDC = 20_000_000n; // agent starts with 20 USDC in wallet (in lam
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 const PROGRAM_ID = new PublicKey(
-  process.env.SOLANA_PROGRAM_ID || "4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob",
+  process.env.SOLANA_PROGRAM_ID || "2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3",
 );
 const BACKEND_URL = process.env.PACT_BACKEND_URL || "http://localhost:3001";
 const DATABASE_URL =
@@ -155,19 +155,10 @@ async function ensureApiKey(agentPubkey: string): Promise<string> {
   return apiKey;
 }
 
-async function ensureProviderRow(hostname: string): Promise<string> {
-  const pgClient = new Client({ connectionString: DATABASE_URL });
-  await pgClient.connect();
-  const row = await pgClient.query<{ id: string }>(
-    `INSERT INTO providers (name, category, base_url)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (base_url) DO UPDATE SET name = EXCLUDED.name
-     RETURNING id`,
-    [hostname.split(".")[0] ?? hostname, "Demo", hostname],
-  );
-  await pgClient.end();
-  return row.rows[0].id;
-}
+// NOTE: no ensureProviderRow helper. The backend's findOrCreateProvider
+// (in src/routes/records.ts) creates the providers row automatically when
+// the SDK POSTs its first record, and respects any pretty name/category
+// previously seeded by src/scripts/seed.ts.
 
 // -------- main --------
 
@@ -292,9 +283,8 @@ async function main() {
   log("enable", `explorer: https://explorer.solana.com/tx/${enableSig}?cluster=devnet`);
   console.log("");
 
-  // -------- wire up backend (API key + provider row) --------
+  // -------- wire up backend (API key only; provider row auto-created on first POST) --------
   const apiKey = await ensureApiKey(agent.publicKey.toBase58());
-  await ensureProviderRow(HOSTNAME);
 
   // -------- monitor SDK setup --------
   const monitor = pactMonitor({
