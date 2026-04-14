@@ -2,6 +2,9 @@ import * as anchor from "@anchor-lang/core";
 import { Program } from "@anchor-lang/core";
 import { PactInsurance } from "../target/types/pact_insurance";
 import { Connection, Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  getOrCreateAssociatedTokenAccount,
+} from "@solana/spl-token";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -96,6 +99,18 @@ async function main() {
   console.log("  withdrawal_cooldown:  ", config.withdrawalCooldownSeconds.toString(), "(7 days)");
   console.log("  aggregate_cap_bps:    ", config.aggregateCapBps, "(30%)");
   console.log("  aggregate_cap_window: ", config.aggregateCapWindowSeconds.toString(), "(24h)");
+
+  // Ensure the treasury's USDC ATA exists on-chain. settle_premium requires
+  // this account to be initialized so the 15% protocol fee has somewhere to
+  // land. Without it, every crank cycle would fail with AccountNotInitialized.
+  // Idempotent — createIfNotExists.
+  const treasuryAta = await getOrCreateAssociatedTokenAccount(
+    connection,
+    deployer,
+    DEVNET_USDC_MINT,
+    config.treasury as PublicKey,
+  );
+  console.log("  treasury_token_account:", treasuryAta.address.toString());
 }
 
 main().catch((err) => {
