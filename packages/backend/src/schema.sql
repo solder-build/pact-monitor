@@ -34,6 +34,17 @@ CREATE INDEX IF NOT EXISTS idx_call_records_provider_id ON call_records(provider
 CREATE INDEX IF NOT EXISTS idx_call_records_timestamp ON call_records(timestamp);
 CREATE INDEX IF NOT EXISTS idx_call_records_classification ON call_records(classification);
 
+-- Idempotency guard: an agent's SDK client may re-flush the same record on
+-- multiple sync cycles (e.g. during shutdown race). Without this partial
+-- unique index, each re-flush would insert a fresh call_records row with a
+-- new UUID, each deriving a distinct claim PDA on-chain and landing a fresh
+-- refund. Keyed on the tuple that uniquely identifies a single agent call:
+-- (agent_pubkey, timestamp, endpoint). Only enforced for rows that carry
+-- an agent_pubkey (anonymous traffic can still be duplicated).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_call_records_agent_idempotency
+  ON call_records(agent_pubkey, timestamp, endpoint)
+  WHERE agent_pubkey IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS backend_metrics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   route TEXT NOT NULL,
