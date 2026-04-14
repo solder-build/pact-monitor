@@ -17,6 +17,7 @@ import {
 } from "@solana/spl-token";
 import BN from "bn.js";
 import { expect } from "chai";
+import { createHash } from "crypto";
 import { getOrInitProtocol } from "../test-utils/setup";
 
 describe("pact-insurance: claims", () => {
@@ -80,7 +81,7 @@ describe("pact-insurance: claims", () => {
       [
         Buffer.from("claim"),
         policyPda.toBuffer(),
-        Buffer.from(callId),
+        createHash("sha256").update(callId).digest(),
       ],
       program.programId
     );
@@ -286,7 +287,7 @@ describe("pact-insurance: claims", () => {
       [
         Buffer.from("claim"),
         policyPda.toBuffer(),
-        Buffer.from(oldCallId),
+        createHash("sha256").update(oldCallId).digest(),
       ],
       program.programId
     );

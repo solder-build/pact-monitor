@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use sha2::{Digest, Sha256};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use crate::state::{ProtocolConfig, CoveragePool, Policy, Claim, TriggerType, ClaimStatus};
 use crate::constants::{ABSOLUTE_MAX_AGGREGATE_CAP_BPS, MAX_CALL_ID_LEN};
@@ -59,7 +60,7 @@ pub struct SubmitClaim<'info> {
         seeds = [
             Claim::SEED_PREFIX,
             policy.key().as_ref(),
-            args.call_id.as_bytes()
+            &Sha256::digest(args.call_id.as_bytes())
         ],
         bump
     )]

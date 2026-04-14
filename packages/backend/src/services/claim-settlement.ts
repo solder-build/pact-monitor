@@ -83,11 +83,10 @@ export async function submitClaimOnChain(
   const agentPubkey = new PublicKey(callRecord.agent_pubkey);
   const [policyPda] = derivePolicyPda(programId, poolPda, agentPubkey);
 
-  // Claim PDA seed must be <= 32 bytes. DB row IDs are UUIDs (36 chars).
-  // Strip hyphens -> 32 hex chars -> fits exactly. This transform is
-  // deterministic and reversible so DB <-> on-chain cross-reference still works.
-  const onChainCallId = callRecord.id.replace(/-/g, "");
-  const [claimPda] = deriveClaimPda(programId, policyPda, onChainCallId);
+  // Claim PDA seed is sha256(call_id) — the call_id can be any string up to
+  // MAX_CALL_ID_LEN (64 chars). Pass the canonical UUID through unchanged so
+  // DB <-> on-chain cross-reference is trivial.
+  const [claimPda] = deriveClaimPda(programId, policyPda, callRecord.id);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const config: any = await (program.account as any).protocolConfig.fetch(protocolPda);
@@ -113,7 +112,7 @@ export async function submitClaimOnChain(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sig: string = await (program.methods as any)
     .submitClaim({
-      callId: onChainCallId,
+      callId: callRecord.id,
       triggerType,
       evidenceHash,
       callTimestamp: new BN(callTimestamp),

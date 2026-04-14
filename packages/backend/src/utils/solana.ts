@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import bs58 from "bs58";
+import { createHash } from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -75,13 +76,18 @@ export function derivePolicyPda(
   );
 }
 
+// Exposed so tests can lock in the on-chain seed format.
+export function callIdSeedBytes(callId: string): Uint8Array {
+  return Uint8Array.from(createHash("sha256").update(callId).digest());
+}
+
 export function deriveClaimPda(
   programId: PublicKey,
   policyPda: PublicKey,
   callId: string,
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("claim"), policyPda.toBuffer(), Buffer.from(callId)],
+    [Buffer.from("claim"), policyPda.toBuffer(), callIdSeedBytes(callId)],
     programId,
   );
 }

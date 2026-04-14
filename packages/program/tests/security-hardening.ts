@@ -16,6 +16,7 @@ import {
   approve,
 } from "@solana/spl-token";
 import { expect } from "chai";
+import { createHash } from "crypto";
 import { getOrInitProtocol } from "../test-utils/setup";
 
 describe("pact-insurance: security hardening", () => {
@@ -70,7 +71,7 @@ describe("pact-insurance: security hardening", () => {
       program.programId
     );
     [wrongOracleClaimPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("claim"), policyPda.toBuffer(), Buffer.from(wrongOracleCallId)],
+      [Buffer.from("claim"), policyPda.toBuffer(), createHash("sha256").update(wrongOracleCallId).digest()],
       program.programId
     );
 
@@ -253,6 +254,82 @@ describe("pact-insurance: security hardening", () => {
     }
   });
 
+  function deriveH02ClaimPda(policyKey: PublicKey, callId: string): PublicKey {
+    const hashed = createHash("sha256").update(callId).digest();
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("claim"), policyKey.toBuffer(), hashed],
+      program.programId,
+    );
+    return pda;
+  }
+
+  it("H-02: submit_claim succeeds with 36-char UUID-with-hyphens call_id", async () => {
+    const callId = "11111111-2222-3333-4444-555555555555"; // 36 chars > 32-byte raw seed limit
+    const claimPda = deriveH02ClaimPda(policyPda, callId);
+
+    const sig = await program.methods
+      .submitClaim({
+        callId,
+        triggerType: { error: {} },
+        evidenceHash: Array(32).fill(0),
+        callTimestamp: new BN(Math.floor(Date.now() / 1000)),
+        latencyMs: 100,
+        statusCode: 500,
+        paymentAmount: new BN(1000),
+      })
+      .accounts({
+        config: protocolPda,
+        pool: poolPda,
+        vault: vaultPda,
+        policy: policyPda,
+        claim: claimPda,
+        agentTokenAccount: agentAta,
+        oracle: oracle.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([oracle])
+      .rpc();
+    expect(sig).to.be.a("string");
+
+    // Verify the claim was stored with the FULL call_id (not hyphen-stripped)
+    const claim = await program.account.claim.fetch(claimPda);
+    expect(claim.callId).to.equal(callId);
+  });
+
+  it("H-02: submit_claim succeeds with 64-char call_id (MAX_CALL_ID_LEN)", async () => {
+    const callId = "a".repeat(64); // exactly at the cap
+    const claimPda = deriveH02ClaimPda(policyPda, callId);
+
+    const sig = await program.methods
+      .submitClaim({
+        callId,
+        triggerType: { error: {} },
+        evidenceHash: Array(32).fill(0),
+        callTimestamp: new BN(Math.floor(Date.now() / 1000)),
+        latencyMs: 100,
+        statusCode: 500,
+        paymentAmount: new BN(1000),
+      })
+      .accounts({
+        config: protocolPda,
+        pool: poolPda,
+        vault: vaultPda,
+        policy: policyPda,
+        claim: claimPda,
+        agentTokenAccount: agentAta,
+        oracle: oracle.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([oracle])
+      .rpc();
+    expect(sig).to.be.a("string");
+
+    const claim = await program.account.claim.fetch(claimPda);
+    expect(claim.callId).to.equal(callId);
+  });
+
   it("C-03: submit_claim rejects agent_token_account that is not policy.agent_token_account", async () => {
     // Create a second token account for the SAME agent on the SAME mint but at
     // a different address. mint + owner constraints will pass; the new
@@ -266,9 +343,8 @@ describe("pact-insurance: security hardening", () => {
     );
 
     const callId = "c03-wrong-ata";
-    const callIdBuffer = Buffer.from(callId);
     const [c03ClaimPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("claim"), policyPda.toBuffer(), callIdBuffer],
+      [Buffer.from("claim"), policyPda.toBuffer(), createHash("sha256").update(callId).digest()],
       program.programId,
     );
 

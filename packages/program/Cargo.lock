@@ -1843,6 +1843,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "litesvm",
+ "sha2 0.10.9",
  "solana-keypair",
  "solana-message",
  "solana-signer",

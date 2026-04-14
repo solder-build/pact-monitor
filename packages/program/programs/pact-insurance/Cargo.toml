@@ -24,6 +24,7 @@ enforce-deployer = []
 [dependencies]
 anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
 anchor-spl = "1.0.0"
+sha2 = { version = "0.10", default-features = false }
 
 [dev-dependencies]
 litesvm = "0.10.0"

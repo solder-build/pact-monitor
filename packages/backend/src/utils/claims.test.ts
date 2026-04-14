@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "crypto";
+import { callIdSeedBytes } from "./solana.js";
 
 describe("claims refund logic", () => {
   it("returns correct refund percentages per trigger type", () => {
@@ -79,5 +81,22 @@ describe("claims refund logic", () => {
     const { clampedCallCost, refundAmount } = simulateClamp(1_000_000_000, 100);
     assert.equal(clampedCallCost, 1_000_000_000);
     assert.equal(refundAmount, 1_000_000_000);
+  });
+});
+
+describe("callIdSeedBytes (H-02 lock-in)", () => {
+  it("produces sha256 of the call_id string", () => {
+    const callId = "11111111-2222-3333-4444-555555555555";
+    const expected = createHash("sha256").update(callId).digest();
+    assert.deepEqual(
+      Buffer.from(callIdSeedBytes(callId)),
+      expected,
+    );
+  });
+
+  it("produces a 32-byte output regardless of input length", () => {
+    assert.equal(callIdSeedBytes("short").length, 32);
+    assert.equal(callIdSeedBytes("a".repeat(64)).length, 32);
+    assert.equal(callIdSeedBytes("11111111-2222-3333-4444-555555555555").length, 32);
   });
 });
