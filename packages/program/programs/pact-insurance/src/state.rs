@@ -5,6 +5,7 @@ use crate::constants::{MAX_AGENT_ID_LEN, MAX_CALL_ID_LEN, MAX_HOSTNAME_LEN};
 #[derive(InitSpace)]
 pub struct ProtocolConfig {
     pub authority: Pubkey,
+    pub oracle: Pubkey,
     pub treasury: Pubkey,
     pub usdc_mint: Pubkey,
 

@@ -33,6 +33,7 @@ pub fn handler(
     let config = &mut ctx.accounts.config;
 
     config.authority = args.authority;
+    config.oracle = args.authority; // TEMP: Task 5 will replace with explicit args.oracle
     config.treasury = args.treasury;
     config.usdc_mint = args.usdc_mint;
 
