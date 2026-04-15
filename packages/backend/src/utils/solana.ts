@@ -22,18 +22,48 @@ export interface SolanaConfig {
   usdcMint: string;
 }
 
+// Module-scope cache so we parse/decode the oracle keypair once per process.
+// The backend has exactly one oracle identity, so a simple singleton is enough.
+// Tests can wipe it via __resetOracleKeypairCacheForTests().
+let cachedOracleKeypair: Keypair | null = null;
+
 export function loadOracleKeypair(config: SolanaConfig): Keypair {
+  if (cachedOracleKeypair) return cachedOracleKeypair;
+
+  // Base58 is the Cloud Run / managed-env form: a single string that can live
+  // directly in a secret manager entry or env var. Checked first so hosted
+  // envs never accidentally fall through to a filesystem path they don't have.
+  if (config.oracleKeypairBase58) {
+    cachedOracleKeypair = Keypair.fromSecretKey(bs58.decode(config.oracleKeypairBase58));
+    return cachedOracleKeypair;
+  }
+
   if (config.oracleKeypairPath) {
     const resolved = config.oracleKeypairPath.startsWith("~")
       ? config.oracleKeypairPath.replace(/^~/, process.env.HOME ?? "")
       : config.oracleKeypairPath;
-    const raw = fs.readFileSync(resolved, "utf-8");
-    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
+    const parsed = JSON.parse(fs.readFileSync(resolved, "utf-8"));
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length !== 64 ||
+      !parsed.every((b) => typeof b === "number" && Number.isInteger(b) && b >= 0 && b <= 255)
+    ) {
+      throw new Error(
+        `Invalid keypair file at ${resolved}: expected JSON array of 64 bytes (0-255)`,
+      );
+    }
+    cachedOracleKeypair = Keypair.fromSecretKey(Uint8Array.from(parsed));
+    return cachedOracleKeypair;
   }
-  if (config.oracleKeypairBase58) {
-    return Keypair.fromSecretKey(bs58.decode(config.oracleKeypairBase58));
-  }
-  throw new Error("No oracle keypair configured");
+
+  throw new Error(
+    "No oracle keypair configured: set ORACLE_KEYPAIR_BASE58 (preferred for Cloud Run) or ORACLE_KEYPAIR_PATH",
+  );
+}
+
+// Exposed for tests only.
+export function __resetOracleKeypairCacheForTests(): void {
+  cachedOracleKeypair = null;
 }
 
 export function createSolanaClient(config: SolanaConfig) {

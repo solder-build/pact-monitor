@@ -540,9 +540,9 @@ describe("API integration tests", () => {
   });
 
   // Step 2.1 — oracle keypair module-scope cache
-  test("oracle keypair cache returns same object reference across N calls", async () => {
+  test("oracle keypair cache returns same object reference across N calls (file path)", async () => {
     // ESM module exports are read-only — we cannot monkey-patch fs.readFileSync.
-    // Instead we verify caching by identity: getCachedOracleKeypair() must return
+    // Instead we verify caching by identity: loadOracleKeypair() must return
     // the exact same Keypair object on every call after the first (proving no
     // re-read). We also confirm the public key matches the key we wrote.
     const { Keypair } = await import("@solana/web3.js");
@@ -553,16 +553,20 @@ describe("API integration tests", () => {
     const kp = Keypair.generate();
     fs.writeFileSync(tmpFile, JSON.stringify(Array.from(kp.secretKey)));
 
-    const savedEnv = process.env.PACT_ORACLE_KEYPAIR;
-    process.env.PACT_ORACLE_KEYPAIR = tmpFile;
-
-    const { getCachedOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../services/claim-settlement.js");
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
     __resetOracleKeypairCacheForTests();
 
     try {
-      const a = getCachedOracleKeypair();
-      const b = getCachedOracleKeypair();
-      const c = getCachedOracleKeypair();
+      const cfg = {
+        rpcUrl: "http://127.0.0.1:8899",
+        programId: "11111111111111111111111111111111",
+        usdcMint: "11111111111111111111111111111111",
+        oracleKeypairPath: tmpFile,
+      };
+
+      const a = loadOracleKeypair(cfg);
+      const b = loadOracleKeypair(cfg);
+      const c = loadOracleKeypair(cfg);
 
       // All calls must return the same cached object (reference equality).
       assert.strictEqual(a, b, "second call must return the cached keypair instance");
@@ -570,8 +574,6 @@ describe("API integration tests", () => {
       // And it must be the keypair we wrote.
       assert.equal(a.publicKey.toBase58(), kp.publicKey.toBase58());
     } finally {
-      if (savedEnv === undefined) delete process.env.PACT_ORACLE_KEYPAIR;
-      else process.env.PACT_ORACLE_KEYPAIR = savedEnv;
       try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
       __resetOracleKeypairCacheForTests();
     }
@@ -586,15 +588,19 @@ describe("API integration tests", () => {
     // Uint8Array.from(string), producing a truncated/zeroed secret key.
     fs.writeFileSync(tmpFile, JSON.stringify("not-an-array"));
 
-    const savedEnv = process.env.PACT_ORACLE_KEYPAIR;
-    process.env.PACT_ORACLE_KEYPAIR = tmpFile;
-
-    const { getCachedOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../services/claim-settlement.js");
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
     __resetOracleKeypairCacheForTests();
+
+    const cfg = {
+      rpcUrl: "http://127.0.0.1:8899",
+      programId: "11111111111111111111111111111111",
+      usdcMint: "11111111111111111111111111111111",
+      oracleKeypairPath: tmpFile,
+    };
 
     try {
       assert.throws(
-        () => getCachedOracleKeypair(),
+        () => loadOracleKeypair(cfg),
         /Invalid keypair file/,
         "must throw when file content is not a 64-byte array",
       );
@@ -603,14 +609,55 @@ describe("API integration tests", () => {
       fs.writeFileSync(tmpFile, JSON.stringify([1, 2, 3]));
       __resetOracleKeypairCacheForTests();
       assert.throws(
-        () => getCachedOracleKeypair(),
+        () => loadOracleKeypair(cfg),
         /Invalid keypair file/,
         "must throw when array length is not 64",
       );
     } finally {
-      if (savedEnv === undefined) delete process.env.PACT_ORACLE_KEYPAIR;
-      else process.env.PACT_ORACLE_KEYPAIR = savedEnv;
       try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+      __resetOracleKeypairCacheForTests();
+    }
+  });
+
+  test("oracle keypair loader accepts base58 secret (Cloud Run path)", async () => {
+    // Defends the managed-env form: ORACLE_KEYPAIR_BASE58 must decode to the
+    // same Keypair a JSON array file would, with no filesystem access.
+    const { Keypair } = await import("@solana/web3.js");
+    const bs58 = (await import("bs58")).default;
+    const kp = Keypair.generate();
+    const base58Secret = bs58.encode(kp.secretKey);
+
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
+    __resetOracleKeypairCacheForTests();
+
+    try {
+      const loaded = loadOracleKeypair({
+        rpcUrl: "http://127.0.0.1:8899",
+        programId: "11111111111111111111111111111111",
+        usdcMint: "11111111111111111111111111111111",
+        oracleKeypairBase58: base58Secret,
+      });
+      assert.equal(loaded.publicKey.toBase58(), kp.publicKey.toBase58());
+    } finally {
+      __resetOracleKeypairCacheForTests();
+    }
+  });
+
+  test("oracle keypair loader throws when neither path nor base58 is provided", async () => {
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
+    __resetOracleKeypairCacheForTests();
+
+    try {
+      assert.throws(
+        () =>
+          loadOracleKeypair({
+            rpcUrl: "http://127.0.0.1:8899",
+            programId: "11111111111111111111111111111111",
+            usdcMint: "11111111111111111111111111111111",
+          }),
+        /ORACLE_KEYPAIR_BASE58.*ORACLE_KEYPAIR_PATH/,
+      );
+    } finally {
       __resetOracleKeypairCacheForTests();
     }
   });
