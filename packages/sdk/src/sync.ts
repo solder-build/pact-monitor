@@ -8,6 +8,7 @@ export class PactSync {
   private intervalMs: number;
   private batchSize: number;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private flushInFlight: Promise<void> | null = null;
 
   constructor(
     storage: PactStorage,
@@ -37,6 +38,23 @@ export class PactSync {
   }
 
   async flush(): Promise<void> {
+    // Re-entrancy guard: if a previous flush is still in flight (e.g. the
+    // interval timer fired again, or shutdown() races with the timer), join
+    // the existing promise instead of reading storage a second time. Two
+    // parallel flushes would both getUnsynced() the same records and POST
+    // them twice, creating duplicate call_records rows on the backend —
+    // each deriving a distinct claim PDA via sha256 and settling a fresh
+    // on-chain refund. Sequencing the flushes eliminates the duplication.
+    if (this.flushInFlight) {
+      return this.flushInFlight;
+    }
+    this.flushInFlight = this.doFlush().finally(() => {
+      this.flushInFlight = null;
+    });
+    return this.flushInFlight;
+  }
+
+  private async doFlush(): Promise<void> {
     const unsynced = this.storage.getUnsynced();
     if (unsynced.length === 0) return;
 

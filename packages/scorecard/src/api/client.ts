@@ -2,6 +2,8 @@ export interface ProviderSummary {
   id: string;
   name: string;
   category: string;
+  hostname?: string;
+  base_url?: string;
   total_calls: number;
   failure_rate: number;
   avg_latency_ms: number;
@@ -56,7 +58,54 @@ export interface AnalyticsTimeseries {
   data: AnalyticsTimeseriesPoint[];
 }
 
-const BASE = "/api/v1";
+export interface PoolSummary {
+  hostname: string;
+  pda: string;
+  totalDeposited: string;
+  totalAvailable: string;
+  totalPremiumsEarned: string;
+  totalClaimsPaid: string;
+  insuranceRateBps: number;
+  maxCoveragePerCall: string;
+  activePolicies: number;
+  payoutsThisWindow: string;
+  windowStart: string;
+}
+
+export interface PoolPositionInfo {
+  underwriter: string;
+  deposited: string;
+  earnedPremiums: string;
+  depositTimestamp: string;
+}
+
+export interface PoolClaimInfo {
+  id: string;
+  call_record_id: string;
+  agent_id: string;
+  trigger_type: string;
+  refund_amount: number | string;
+  tx_hash: string | null;
+  settlement_slot: number | null;
+  created_at: string;
+}
+
+export interface PoolDetail {
+  pool: {
+    hostname: string;
+    totalDeposited: string;
+    totalAvailable: string;
+    totalPremiumsEarned: string;
+    totalClaimsPaid: string;
+    insuranceRateBps: number;
+    activePolicies: number;
+    payoutsThisWindow: string;
+  };
+  positions: PoolPositionInfo[];
+  recentClaims: PoolClaimInfo[];
+}
+
+const BASE = `${import.meta.env.VITE_API_URL ?? ""}/api/v1`;
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
@@ -72,4 +121,15 @@ export const api = {
   getAnalyticsSummary: () => get<AnalyticsSummary>("/analytics/summary"),
   getAnalyticsTimeseries: (granularity = "daily", days = 7) =>
     get<AnalyticsTimeseries>(`/analytics/timeseries?granularity=${granularity}&days=${days}`),
+  getPools: () => get<{ pools: PoolSummary[] }>("/pools").then((r) => r.pools),
+  getPool: (hostname: string) =>
+    get<PoolDetail>(`/pools/${encodeURIComponent(hostname)}`),
 };
+
+export async function getPools(): Promise<PoolSummary[]> {
+  return api.getPools();
+}
+
+export async function getPool(hostname: string): Promise<PoolDetail> {
+  return api.getPool(hostname);
+}

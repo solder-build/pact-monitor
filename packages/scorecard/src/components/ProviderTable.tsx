@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useProviders } from "../hooks/useProviders";
 import { NetworkActivity } from "./NetworkActivity";
+import { CoveragePoolsPanel } from "./CoveragePoolsPanel";
 import { track } from "../analytics/tracker";
 
 const tierColor: Record<string, string> = {
@@ -32,6 +33,7 @@ export function ProviderTable() {
   return (
     <div>
       <NetworkActivity />
+      <CoveragePoolsPanel />
       <div className="flex justify-between items-center mb-4">
         <h2 className="font-serif text-lg text-heading">Provider Rankings</h2>
         {lastUpdated && (

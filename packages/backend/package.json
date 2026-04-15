@@ -1,6 +1,6 @@
 {
   "name": "@pact-network/backend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,12 +12,19 @@
     "test": "tsx --test src/utils/*.test.ts src/routes/*.test.ts"
   },
   "dependencies": {
+    "@anchor-lang/core": "^1.0.0",
     "@fastify/cors": "^11.2.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.3",
+    "bs58": "^6.0.0",
     "dotenv": "^16.5.0",
     "fastify": "^5.3.3",
     "pg": "^8.16.0"
   },
   "devDependencies": {
+    "@types/bn.js": "^5.2.0",
     "@types/pg": "^8.15.4",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

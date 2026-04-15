@@ -50,6 +50,19 @@ jobs:
             echo "uri=${{ env.REGION }}-docker.pkg.dev/${{ steps.env.outputs.project_id }}/${{ env.AR_REPO }}/${{ env.SERVICE_NAME }}:latest" >> $GITHUB_OUTPUT
           fi
 
+      - name: Write Cloud Run env file
+        run: |
+          if [ "${{ inputs.environment }}" = "staging" ]; then
+            printf '%s\n' "${{ secrets.ENV_STG }}" > /tmp/cloud-run-env.yaml
+          else
+            printf '%s\n' "${{ secrets.ENV_PROD }}" > /tmp/cloud-run-env.yaml
+          fi
+          # Fail fast if the secret is empty / not set
+          if [ ! -s /tmp/cloud-run-env.yaml ]; then
+            echo "::error::Runtime env file is empty. Check ${{ inputs.environment == 'staging' && 'ENV_STG' || 'ENV_PROD' }} secret."
+            exit 1
+          fi
+
       - uses: google-github-actions/auth@v3
         with:
           project_id: ${{ steps.env.outputs.project_id }}
@@ -61,7 +74,10 @@ jobs:
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image ${{ steps.img.outputs.uri }} \
             --region ${{ env.REGION }} \
-            --platform managed
+            --platform managed \
+            --port 8080 \
+            --allow-unauthenticated \
+            --env-vars-file /tmp/cloud-run-env.yaml
 
       - name: Notify Success
         if: success()

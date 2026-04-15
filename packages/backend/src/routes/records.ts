@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireApiKey } from "../middleware/auth.js";
 import { query, getOne } from "../db.js";
 import { maybeCreateClaim } from "../utils/claims.js";
@@ -49,7 +49,12 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: "records array is required" });
       }
 
-      const agentId = (request as FastifyRequest & { agentId: string }).agentId;
+      const authed = request as FastifyRequest & {
+        agentId: string;
+        agentPubkey: string | null;
+      };
+      const agentId = authed.agentId;
+      const agentPubkey = authed.agentPubkey;
       const providerIds = new Set<string>();
       let accepted = 0;
 
@@ -57,13 +62,23 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
         const providerId = await findOrCreateProvider(rec.hostname);
         providerIds.add(providerId);
 
+        // ON CONFLICT DO NOTHING on the partial unique index
+        // idx_call_records_agent_idempotency. If the SDK re-flushes the same
+        // record (agent_pubkey, timestamp, endpoint) on a subsequent sync
+        // cycle, the second INSERT is a no-op, RETURNING returns zero rows,
+        // and we skip both `accepted` and `maybeCreateClaim` for this record.
+        // Anonymous traffic (agent_pubkey IS NULL) is not covered by the
+        // partial index, so it retains the old at-most-once-per-POST semantics.
         const insertResult = await query<{ id: string }>(
           `INSERT INTO call_records (
             provider_id, endpoint, timestamp, status_code, latency_ms,
             classification, payment_protocol, payment_amount, payment_asset,
             payment_network, payer_address, recipient_address, tx_hash,
-            settlement_success, agent_id
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            settlement_success, agent_id, agent_pubkey
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+          ON CONFLICT (agent_pubkey, timestamp, endpoint)
+            WHERE agent_pubkey IS NOT NULL
+            DO NOTHING
           RETURNING id`,
           [
             providerId, rec.endpoint, rec.timestamp, rec.status_code,
@@ -71,9 +86,17 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
             rec.payment_amount ?? null, rec.payment_asset ?? null,
             rec.payment_network ?? null, rec.payer_address ?? null,
             rec.recipient_address ?? null, rec.tx_hash ?? null,
-            rec.settlement_success ?? null, agentId,
+            rec.settlement_success ?? null, agentId, agentPubkey,
           ],
         );
+
+        if (insertResult.rows.length === 0) {
+          app.log.debug(
+            { agentPubkey, timestamp: rec.timestamp, endpoint: rec.endpoint },
+            "duplicate call_record skipped (SDK re-flush)",
+          );
+          continue;
+        }
 
         const callRecordId = insertResult.rows[0].id;
 
@@ -83,6 +106,12 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
           agentId,
           classification: rec.classification,
           paymentAmount: rec.payment_amount ?? null,
+          agentPubkey,
+          providerHostname: rec.hostname,
+          latencyMs: rec.latency_ms,
+          statusCode: rec.status_code,
+          createdAt: new Date(rec.timestamp),
+          logger: app.log,
         });
 
         accepted++;
@@ -102,5 +131,3 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
-
-type FastifyRequest = import("fastify").FastifyRequest;

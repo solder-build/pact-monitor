@@ -19,12 +19,14 @@ Provider tiers:
 
 ```
 packages/
-  sdk/        @pact-network/monitor   TypeScript SDK wrapping fetch()
-  backend/    @pact-network/backend   Fastify API server + PostgreSQL
-  scorecard/  @pact-network/scorecard Vite + React + Tailwind dashboard
-deploy/       Docker Compose + GCP deployment configs
-docs/         PRD, design spec, implementation plan
-scripts/      Setup automation
+  sdk/        @pact-network/monitor    TypeScript SDK wrapping fetch()
+  insurance/  @pact-network/insurance  Agent-side SDK for on-chain policies (Phase 3)
+  backend/    @pact-network/backend    Fastify API server + PostgreSQL + Solana crank
+  scorecard/  @pact-network/scorecard  Vite + React + Tailwind dashboard
+  program/                             Anchor program (Solana on-chain insurance)
+deploy/                                Docker Compose + GCP deployment configs
+docs/                                  PRD, design spec, Phase 3 implementation plan
+scripts/                               Setup automation
 ```
 
 ## Tech Stack
@@ -105,8 +107,11 @@ The SDK extracts x402/MPP payment headers when present, capturing payment data a
 | ------ | --------------------------------- | -------- | ------------------------------------ |
 | POST   | `/api/v1/records`                 | Required | Batch ingest call records            |
 | GET    | `/api/v1/providers`               | Public   | Ranked provider list with rates      |
-| GET    | `/api/v1/providers/:id`           | Public   | Provider detail with percentiles     |
+| GET    | `/api/v1/providers/:id`           | Public   | Provider detail (incl. `hostname`)   |
 | GET    | `/api/v1/providers/:id/timeseries`| Public   | Failure rate over time (hourly/daily)|
+| GET    | `/api/v1/pools`                   | Public   | On-chain coverage pools (Phase 3)    |
+| GET    | `/api/v1/pools/:hostname`         | Public   | Pool detail + positions + claims     |
+| POST   | `/api/v1/claims/submit`           | Internal | Submit a claim on-chain via oracle   |
 | GET    | `/health`                         | Public   | Server health check                  |
 
 Authentication uses Bearer tokens: `Authorization: Bearer pact_...`
@@ -156,10 +161,27 @@ Brutalist aesthetic. No gradients, no rounded corners, no emojis.
 - **Slate:** #5A6B7A (healthy, RELIABLE)
 - **Fonts:** Inria Serif (headlines), Inria Sans (body), JetBrains Mono (data)
 
+## Phase 3: On-Chain Insurance (Solana)
+
+The Anchor program at `packages/program/` lifts the parametric insurance from a simulated DB row into a real on-chain market. See [`docs/PHASE3.md`](./docs/PHASE3.md) for the full design, devnet state, and operator runbook.
+
+**Devnet program**: `4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob`
+
+**New here?** Three docs to read in order:
+1. [`docs/ONBOARDING.md`](./docs/ONBOARDING.md) — narrative walkthrough for someone who knows nothing
+2. [`docs/STRUCTURE.md`](./docs/STRUCTURE.md) — file-tree map of the whole monorepo
+3. [`docs/PHASE3.md`](./docs/PHASE3.md) — architecture handbook + operator runbook
+
+**Highlights**:
+- Per-provider `CoveragePool` PDAs with PDA-owned SPL token vaults
+- Underwriters deposit USDC for yield; cooldown-enforced withdrawals
+- **SPL token delegation** model — agents call `spl_token::approve` once and the protocol pulls premiums from their wallet per call. No prepaid balance, no upfront deposit.
+- Backend crank (`packages/backend/src/crank/`) settles premiums and pushes rate updates
+- Aggregate payout cap (default 30% / 24h) with hardcoded ceiling
+- Auto-approved parametric claims with PDA-collision dedupe
+
 ## Roadmap
 
-- **Solana on-chain program** -- publish insurance rates on-chain, enable parametric payouts via smart contract
-- **Claims engine** -- automated claim detection and payout when provider SLA violations exceed insured thresholds
 - **Multi-chain support** -- extend monitoring beyond Solana to EVM chains and cross-chain bridges
 - **Agent-to-agent marketplace** -- allow AI agents to purchase insurance policies directly, settling in SOL or stablecoins
 - **Historical analytics API** -- expose long-term provider reliability trends, seasonal patterns, and predictive risk scores

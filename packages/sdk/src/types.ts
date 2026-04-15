@@ -30,6 +30,7 @@ export interface PactConfig {
   syncBatchSize?: number;
   latencyThresholdMs?: number;
   storagePath?: string;
+  agentPubkey?: string;
 }
 
 export interface ExpectedSchema {

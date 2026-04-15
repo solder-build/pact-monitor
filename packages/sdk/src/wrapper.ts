@@ -1,3 +1,4 @@
+import { EventEmitter } from "events";
 import type { CallRecord, PactConfig, PactFetchOptions } from "./types.js";
 import { classify } from "./classifier.js";
 import { extractPaymentData, enrichWithManualAmount } from "./payment-extractor.js";
@@ -8,6 +9,7 @@ export class PactMonitor {
   private config: Required<PactConfig>;
   private storage: PactStorage;
   private sync: PactSync | null = null;
+  private events = new EventEmitter();
 
   constructor(config: PactConfig = {}) {
     this.config = {
@@ -18,7 +20,14 @@ export class PactMonitor {
       syncBatchSize: config.syncBatchSize ?? 100,
       latencyThresholdMs: config.latencyThresholdMs ?? 5_000,
       storagePath: config.storagePath || "",
+      agentPubkey: config.agentPubkey || "",
     };
+
+    if (this.config.syncEnabled && this.config.apiKey && !this.config.agentPubkey) {
+      console.warn(
+        "[pact-monitor] agentPubkey missing — on-chain claims will not be submitted for this agent.",
+      );
+    }
 
     this.storage = new PactStorage(this.config.storagePath || undefined);
 
@@ -101,7 +110,17 @@ export class PactMonitor {
     );
 
     let payment = headers ? extractPaymentData(headers) : null;
-    payment = enrichWithManualAmount(payment, pactOptions?.usdcAmount);
+    try {
+      payment = enrichWithManualAmount(payment, pactOptions?.usdcAmount);
+    } catch (err) {
+      // Golden rule: never break the agent. Drop payment metadata on
+      // invalid usdcAmount rather than throwing back to the caller.
+      // But do surface the problem loudly in stderr so the dev notices.
+      console.error(
+        `[pact-monitor] invalid pactOptions.usdcAmount — dropping payment metadata for this call: ${(err as Error).message}`,
+      );
+      // keep payment as whatever extractPaymentData returned (may still be null)
+    }
 
     const record: CallRecord = {
       hostname,
@@ -115,6 +134,27 @@ export class PactMonitor {
     };
 
     this.storage.append(record);
+
+    if (record.classification !== "success") {
+      this.events.emit("failure", record);
+    }
+    this.events.emit("billed", { callCost: payment?.amount ?? 0 });
+  }
+
+  on(event: "failure", listener: (record: CallRecord) => void): this;
+  on(event: "billed", listener: (payload: { callCost: number }) => void): this;
+  on(event: string, listener: (...args: any[]) => void): this {
+    this.events.on(event, listener);
+    return this;
+  }
+
+  off(event: string, listener: (...args: any[]) => void): this {
+    this.events.off(event, listener);
+    return this;
+  }
+
+  emit(event: string, ...args: any[]): boolean {
+    return this.events.emit(event, ...args);
   }
 
   getStats() {

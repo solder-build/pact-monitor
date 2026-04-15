@@ -54,14 +54,6 @@ jobs:
             exit 1
           fi
 
-      - name: Create env file
-        run: |
-          if [ "${{ inputs.environment }}" = "staging" ]; then
-            echo "${{ secrets.ENV_STG }}" > ${{ inputs.context }}/.env
-          else
-            echo "${{ secrets.ENV_PROD }}" > ${{ inputs.context }}/.env
-          fi
-
       - uses: google-github-actions/auth@v3
         with:
           project_id: ${{ steps.env.outputs.project_id }}

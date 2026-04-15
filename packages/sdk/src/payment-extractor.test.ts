@@ -75,4 +75,49 @@ describe("enrichWithManualAmount", () => {
     const result = enrichWithManualAmount(null);
     assert.equal(result, null);
   });
+
+  // --- Bad-case validation: these tests exist because a prior version of
+  // the sample demo passed lamports (2_000_000) instead of whole USDC (2)
+  // and the scorecard rendered a "2000000.00 USDC" refund row. The SDK
+  // now rejects pathological values loudly.
+
+  it("throws on NaN usdcAmount", () => {
+    assert.throws(() => enrichWithManualAmount(null, NaN), RangeError);
+  });
+
+  it("throws on Infinity usdcAmount", () => {
+    assert.throws(() => enrichWithManualAmount(null, Infinity), RangeError);
+  });
+
+  it("throws on negative usdcAmount", () => {
+    assert.throws(() => enrichWithManualAmount(null, -1), RangeError);
+  });
+
+  it("throws on unreasonably large usdcAmount (unit mistake guard)", () => {
+    // Attempting to pass lamports (2_000_000) as whole USDC should blow up,
+    // not silently mint a 2-million-dollar billing record.
+    assert.throws(
+      () => enrichWithManualAmount(null, 2_000_000),
+      /exceeds MAX_MANUAL_USDC_PER_CALL/,
+    );
+  });
+
+  it("accepts the boundary value MAX_MANUAL_USDC_PER_CALL", () => {
+    const result = enrichWithManualAmount(null, 1_000_000);
+    assert.notEqual(result, null);
+    assert.equal(result!.amount, 1_000_000 * 1_000_000);
+  });
+
+  it("accepts 0 usdcAmount (free call)", () => {
+    // 0 with no existing payment returns null (no billing record at all)
+    const result = enrichWithManualAmount(null, 0);
+    assert.equal(result, null);
+  });
+
+  it("throws on non-number usdcAmount types", () => {
+    assert.throws(
+      () => enrichWithManualAmount(null, "2" as unknown as number),
+      RangeError,
+    );
+  });
 });

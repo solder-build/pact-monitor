@@ -1,13 +1,17 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it, test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, randomBytes } from "node:crypto";
+import type { FastifyRequest } from "fastify";
 import Fastify from "fastify";
-import { initDb, query, pool } from "../db.js";
+import { initDb, query, getOne, pool } from "../db.js";
+import { requireApiKey } from "../middleware/auth.js";
 import { healthRoutes } from "./health.js";
 import { recordsRoutes } from "./records.js";
 import { providersRoutes } from "./providers.js";
 import { analyticsRoutes } from "./analytics.js";
 import { claimsRoutes } from "./claims.js";
+import { claimsSubmitRoute } from "./claims-submit.js";
+import { poolsRoute } from "./pools.js";
 
 const TEST_API_KEY = `test-key-${randomUUID()}`;
 const TEST_KEY_HASH = createHash("sha256").update(TEST_API_KEY).digest("hex");
@@ -20,6 +24,19 @@ async function buildApp() {
   await app.register(providersRoutes);
   await app.register(analyticsRoutes);
   await app.register(claimsRoutes);
+  return app;
+}
+
+// buildTestApp creates a fresh Fastify instance (no pool.end — caller manages lifecycle)
+async function buildTestApp() {
+  const app = Fastify();
+  await app.register(healthRoutes);
+  await app.register(recordsRoutes);
+  await app.register(providersRoutes);
+  await app.register(analyticsRoutes);
+  await app.register(claimsRoutes);
+  await app.register(claimsSubmitRoute);
+  await app.register(poolsRoute);
   return app;
 }
 
@@ -312,5 +329,390 @@ describe("API integration tests", () => {
       assert.ok(Array.isArray(body));
       assert.ok(body.length <= 1);
     });
+  });
+
+  // Step 1.1 — auth middleware decorates agentPubkey
+  describe("auth middleware agentPubkey decoration", () => {
+    it("decorates request.agentPubkey from api_keys row", async () => {
+      const testApp = await buildTestApp();
+      const key = `pact_${randomBytes(24).toString("hex")}`;
+      const hash = createHash("sha256").update(key).digest("hex");
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hash, "test-agent", "AgentPubkey111111111111111111111111111111111"],
+      );
+
+      testApp.get("/api/v1/debug/whoami", { preHandler: requireApiKey }, async (req) => {
+        const r = req as FastifyRequest & { agentId: string; agentPubkey: string | null };
+        return { agentId: r.agentId, agentPubkey: r.agentPubkey };
+      });
+
+      const resp = await testApp.inject({
+        method: "GET",
+        url: "/api/v1/debug/whoami",
+        headers: { authorization: `Bearer ${key}` },
+      });
+
+      assert.equal(resp.statusCode, 200);
+      const body = resp.json();
+      assert.equal(body.agentId, "test-agent");
+      assert.equal(body.agentPubkey, "AgentPubkey111111111111111111111111111111111");
+
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hash]);
+      await testApp.close();
+    });
+  });
+
+  // Step 1.7 — records route ignores client-supplied agent_pubkey
+  describe("POST /api/v1/records agent_pubkey binding", () => {
+    it("ignores client-supplied agent_pubkey and uses api_key binding", async () => {
+      const testApp = await buildTestApp();
+      const key = `pact_${randomBytes(24).toString("hex")}`;
+      const hash = createHash("sha256").update(key).digest("hex");
+      const boundPubkey = "BoundPubkey111111111111111111111111111111111";
+      const attackerPubkey = "AttackerPubkey11111111111111111111111111111";
+      const agentLabel = "test-agent-pubkey";
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hash, agentLabel, boundPubkey],
+      );
+
+      const hostname = `pubkey-test-${randomUUID()}.example.com`;
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/records",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        payload: {
+          records: [{
+            hostname,
+            endpoint: "/v1",
+            timestamp: new Date().toISOString(),
+            status_code: 200,
+            latency_ms: 50,
+            classification: "success",
+            agent_pubkey: attackerPubkey,
+          }],
+        },
+      });
+
+      assert.equal(resp.statusCode, 200);
+      const stored = await getOne<{ agent_pubkey: string }>(
+        "SELECT agent_pubkey FROM call_records WHERE agent_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [agentLabel],
+      );
+      assert.equal(stored?.agent_pubkey, boundPubkey);
+
+      await query("DELETE FROM call_records WHERE agent_id = $1", [agentLabel]);
+      await query("DELETE FROM providers WHERE base_url = $1", [hostname]);
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hash]);
+      await testApp.close();
+    });
+  });
+
+  // Step 1.11 — claims-submit auth and ownership checks
+  describe("POST /api/v1/claims/submit auth", () => {
+    it("rejects missing auth with 401", async () => {
+      const testApp = await buildTestApp();
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/claims/submit",
+        payload: { callRecordId: "00000000-0000-0000-0000-000000000000", providerHostname: "x.com" },
+      });
+      assert.equal(resp.statusCode, 401);
+      await testApp.close();
+    });
+
+    it("rejects key/call_record agent mismatch with 403", async () => {
+      const testApp = await buildTestApp();
+      const keyA = `pact_${randomBytes(24).toString("hex")}`;
+      const hashA = createHash("sha256").update(keyA).digest("hex");
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hashA, "agent-a", null],
+      );
+      const provHostname = `mismatch-test-${randomUUID()}.example.com`;
+      const prov = await getOne<{ id: string }>(
+        "INSERT INTO providers (name, base_url) VALUES ($1, $2) RETURNING id",
+        [provHostname, provHostname],
+      );
+      const rec = await getOne<{ id: string }>(
+        `INSERT INTO call_records (provider_id, endpoint, timestamp, status_code,
+           latency_ms, classification, agent_id, agent_pubkey)
+         VALUES ($1, '/v1', NOW(), 500, 100, 'error', 'agent-b', NULL) RETURNING id`,
+        [prov!.id],
+      );
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/claims/submit",
+        headers: { authorization: `Bearer ${keyA}`, "content-type": "application/json" },
+        payload: { callRecordId: rec!.id, providerHostname: provHostname },
+      });
+      assert.equal(resp.statusCode, 403);
+
+      await query("DELETE FROM call_records WHERE id = $1", [rec!.id]);
+      await query("DELETE FROM providers WHERE id = $1", [prov!.id]);
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hashA]);
+      await testApp.close();
+    });
+
+    it("rejects providerHostname mismatch with call record's provider with 400", async () => {
+      const testApp = await buildTestApp();
+      const keyA = `pact_${randomBytes(24).toString("hex")}`;
+      const hashA = createHash("sha256").update(keyA).digest("hex");
+      const agentLabel = `agent-a-${randomUUID()}`;
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hashA, agentLabel, "AgentPubkey1111111111111111111111111111111"],
+      );
+      const provXHostname = `provider-x-${randomUUID()}.example.com`;
+      const provYHostname = `provider-y-${randomUUID()}.example.com`;
+      const provX = await getOne<{ id: string }>(
+        "INSERT INTO providers (name, base_url) VALUES ($1, $2) RETURNING id",
+        [provXHostname, provXHostname],
+      );
+      const provY = await getOne<{ id: string }>(
+        "INSERT INTO providers (name, base_url) VALUES ($1, $2) RETURNING id",
+        [provYHostname, provYHostname],
+      );
+      // Call record is against provider X, but attacker will pass provider Y
+      const rec = await getOne<{ id: string }>(
+        `INSERT INTO call_records (provider_id, endpoint, timestamp, status_code,
+           latency_ms, classification, agent_id, agent_pubkey)
+         VALUES ($1, '/v1', NOW(), 500, 100, 'error', $2, $3) RETURNING id`,
+        [provX!.id, agentLabel, "AgentPubkey1111111111111111111111111111111"],
+      );
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/claims/submit",
+        headers: { authorization: `Bearer ${keyA}`, "content-type": "application/json" },
+        payload: { callRecordId: rec!.id, providerHostname: provYHostname },
+      });
+      assert.equal(resp.statusCode, 400);
+      const body = resp.json();
+      assert.equal(body.error, "providerHostname does not match call record");
+
+      await query("DELETE FROM call_records WHERE id = $1", [rec!.id]);
+      await query("DELETE FROM providers WHERE id IN ($1, $2)", [provX!.id, provY!.id]);
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hashA]);
+      await testApp.close();
+    });
+
+    it("passes ownership + provider gates when agent matches and providerHostname matches (pre-policy 404)", async () => {
+      const testApp = await buildTestApp();
+      const keyA = `pact_${randomBytes(24).toString("hex")}`;
+      const hashA = createHash("sha256").update(keyA).digest("hex");
+      const agentLabel = `agent-happy-${randomUUID()}`;
+      await query(
+        "INSERT INTO api_keys (key_hash, label, agent_pubkey) VALUES ($1, $2, $3)",
+        [hashA, agentLabel, "AgentPubkey2222222222222222222222222222222"],
+      );
+      const provHostname = `happy-path-${randomUUID()}.example.com`;
+      const prov = await getOne<{ id: string }>(
+        "INSERT INTO providers (name, base_url) VALUES ($1, $2) RETURNING id",
+        [provHostname, provHostname],
+      );
+      const rec = await getOne<{ id: string }>(
+        `INSERT INTO call_records (provider_id, endpoint, timestamp, status_code,
+           latency_ms, classification, agent_id, agent_pubkey)
+         VALUES ($1, '/v1', NOW(), 500, 100, 'error', $2, $3) RETURNING id`,
+        [prov!.id, agentLabel, "AgentPubkey2222222222222222222222222222222"],
+      );
+      const resp = await testApp.inject({
+        method: "POST",
+        url: "/api/v1/claims/submit",
+        headers: { authorization: `Bearer ${keyA}`, "content-type": "application/json" },
+        payload: { callRecordId: rec!.id, providerHostname: provHostname },
+      });
+      // Ownership + providerHostname gates pass through; we expect to fail later
+      // in the pipeline (no on-chain policy seeded in test env → 404, or 500 if
+      // the RPC call itself errors out). Assert only that we are NOT blocked
+      // by 401/403/400 — which confirms the ownership and provider-match gates
+      // let us through.
+      assert.notEqual(resp.statusCode, 401);
+      assert.notEqual(resp.statusCode, 403);
+      assert.notEqual(resp.statusCode, 400);
+
+      await query("DELETE FROM call_records WHERE id = $1", [rec!.id]);
+      await query("DELETE FROM providers WHERE id = $1", [prov!.id]);
+      await query("DELETE FROM api_keys WHERE key_hash = $1", [hashA]);
+      await testApp.close();
+    });
+  });
+
+  // Step 2.1 — oracle keypair module-scope cache
+  test("oracle keypair cache returns same object reference across N calls (file path)", async () => {
+    // ESM module exports are read-only — we cannot monkey-patch fs.readFileSync.
+    // Instead we verify caching by identity: loadOracleKeypair() must return
+    // the exact same Keypair object on every call after the first (proving no
+    // re-read). We also confirm the public key matches the key we wrote.
+    const { Keypair } = await import("@solana/web3.js");
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const tmpFile = path.join(os.tmpdir(), `pact-oracle-test-${Date.now()}.json`);
+    const kp = Keypair.generate();
+    fs.writeFileSync(tmpFile, JSON.stringify(Array.from(kp.secretKey)));
+
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
+    __resetOracleKeypairCacheForTests();
+
+    try {
+      const cfg = {
+        rpcUrl: "http://127.0.0.1:8899",
+        programId: "11111111111111111111111111111111",
+        usdcMint: "11111111111111111111111111111111",
+        oracleKeypairPath: tmpFile,
+      };
+
+      const a = loadOracleKeypair(cfg);
+      const b = loadOracleKeypair(cfg);
+      const c = loadOracleKeypair(cfg);
+
+      // All calls must return the same cached object (reference equality).
+      assert.strictEqual(a, b, "second call must return the cached keypair instance");
+      assert.strictEqual(b, c, "third call must return the cached keypair instance");
+      // And it must be the keypair we wrote.
+      assert.equal(a.publicKey.toBase58(), kp.publicKey.toBase58());
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+      __resetOracleKeypairCacheForTests();
+    }
+  });
+
+  test("oracle keypair loader rejects malformed file content", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const tmpFile = path.join(os.tmpdir(), `pact-oracle-bad-${Date.now()}.json`);
+    // Not an array — a string. Without validation this would fall through to
+    // Uint8Array.from(string), producing a truncated/zeroed secret key.
+    fs.writeFileSync(tmpFile, JSON.stringify("not-an-array"));
+
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
+    __resetOracleKeypairCacheForTests();
+
+    const cfg = {
+      rpcUrl: "http://127.0.0.1:8899",
+      programId: "11111111111111111111111111111111",
+      usdcMint: "11111111111111111111111111111111",
+      oracleKeypairPath: tmpFile,
+    };
+
+    try {
+      assert.throws(
+        () => loadOracleKeypair(cfg),
+        /Invalid oracle keypair file/,
+        "must throw when file content is not a 64-byte array",
+      );
+
+      // Also verify a short array (wrong length) is rejected.
+      fs.writeFileSync(tmpFile, JSON.stringify([1, 2, 3]));
+      __resetOracleKeypairCacheForTests();
+      assert.throws(
+        () => loadOracleKeypair(cfg),
+        /Invalid oracle keypair file/,
+        "must throw when array length is not 64",
+      );
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+      __resetOracleKeypairCacheForTests();
+    }
+  });
+
+  test("oracle keypair loader accepts base58 secret (Cloud Run path)", async () => {
+    // Defends the managed-env form: ORACLE_KEYPAIR_BASE58 must decode to the
+    // same Keypair a JSON array file would, with no filesystem access.
+    const { Keypair } = await import("@solana/web3.js");
+    const bs58 = (await import("bs58")).default;
+    const kp = Keypair.generate();
+    const base58Secret = bs58.encode(kp.secretKey);
+
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
+    __resetOracleKeypairCacheForTests();
+
+    try {
+      const loaded = loadOracleKeypair({
+        rpcUrl: "http://127.0.0.1:8899",
+        programId: "11111111111111111111111111111111",
+        usdcMint: "11111111111111111111111111111111",
+        oracleKeypairBase58: base58Secret,
+      });
+      assert.equal(loaded.publicKey.toBase58(), kp.publicKey.toBase58());
+    } finally {
+      __resetOracleKeypairCacheForTests();
+    }
+  });
+
+  test("oracle keypair loader throws when neither path nor base58 is provided", async () => {
+    const { loadOracleKeypair, __resetOracleKeypairCacheForTests } = await import("../utils/solana.js");
+    __resetOracleKeypairCacheForTests();
+
+    try {
+      assert.throws(
+        () =>
+          loadOracleKeypair({
+            rpcUrl: "http://127.0.0.1:8899",
+            programId: "11111111111111111111111111111111",
+            usdcMint: "11111111111111111111111111111111",
+          }),
+        /ORACLE_KEYPAIR_BASE58.*ORACLE_KEYPAIR_PATH/,
+      );
+    } finally {
+      __resetOracleKeypairCacheForTests();
+    }
+  });
+
+  // Step 2.2/2.3 — pools route: 503 on missing env, cache consistency
+  test("GET /api/v1/pools returns 503 when SOLANA_PROGRAM_ID missing", async () => {
+    const saved = process.env.SOLANA_PROGRAM_ID;
+    delete process.env.SOLANA_PROGRAM_ID;
+    const { __resetPoolCacheForTests } = await import("../routes/pools.js");
+    __resetPoolCacheForTests();
+    const app = await buildTestApp();
+    try {
+      const resp = await app.inject({ method: "GET", url: "/api/v1/pools" });
+      assert.equal(resp.statusCode, 503);
+      const body = resp.json();
+      assert.equal(body.error, "Solana configuration unavailable");
+    } finally {
+      if (saved !== undefined) process.env.SOLANA_PROGRAM_ID = saved;
+      await app.close();
+    }
+  });
+
+  test("GET /api/v1/pools does not cache RPC error responses", async () => {
+    // Config must be fully valid so getConfigOr503 passes and execution
+    // reaches createSolanaClient → RPC. With no validator running, the RPC
+    // call fails and the route returns 502 "Upstream RPC error". This test
+    // asserts that:
+    //   1. Both sequential calls return the same 502 (cache consistency).
+    //   2. The cache is NOT populated by an error response (no poisoning).
+    const savedProgramId = process.env.SOLANA_PROGRAM_ID;
+    const savedUsdcMint = process.env.USDC_MINT;
+    process.env.SOLANA_PROGRAM_ID = savedProgramId ?? "4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob";
+    // Canonical mainnet USDC mint — just needs to be a valid base58 32-byte
+    // pubkey so getSolanaConfig doesn't throw. We never touch it on-chain.
+    process.env.USDC_MINT = savedUsdcMint ?? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const { __resetPoolCacheForTests, __getPoolCacheTimestampForTests } = await import("../routes/pools.js");
+    __resetPoolCacheForTests();
+    const app = await buildTestApp();
+    try {
+      const r1 = await app.inject({ method: "GET", url: "/api/v1/pools" });
+      const r2 = await app.inject({ method: "GET", url: "/api/v1/pools" });
+      assert.equal(r1.statusCode, 502, "first call should reach RPC and fail with 502");
+      assert.equal(r2.statusCode, 502, "second call should reach RPC and fail with 502");
+      // Errors must NOT populate the cache.
+      assert.equal(
+        __getPoolCacheTimestampForTests(),
+        null,
+        "cache should remain empty after RPC error responses",
+      );
+    } finally {
+      if (savedProgramId === undefined) delete process.env.SOLANA_PROGRAM_ID;
+      else process.env.SOLANA_PROGRAM_ID = savedProgramId;
+      if (savedUsdcMint === undefined) delete process.env.USDC_MINT;
+      else process.env.USDC_MINT = savedUsdcMint;
+      await app.close();
+    }
   });
 });
