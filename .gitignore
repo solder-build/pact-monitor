@@ -18,3 +18,7 @@ packages/program/.anchor/
 packages/program/target/
 test-ledger/
 packages/program/node_modules/
+.gitnexus
+
+# Claude Code local-only
+.claude/settings.local.json
