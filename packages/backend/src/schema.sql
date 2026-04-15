@@ -108,3 +108,20 @@ CREATE INDEX IF NOT EXISTS idx_claims_provider_id ON claims(provider_id);
 CREATE INDEX IF NOT EXISTS idx_claims_agent_id ON claims(agent_id);
 CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
 CREATE INDEX IF NOT EXISTS idx_claims_created_at ON claims(created_at);
+
+-- Audit trail for /api/v1/faucet/drip. Not used for enforcement (rate limit
+-- lives in @fastify/rate-limit), just a record of who got what and when so we
+-- can retroactively spot abuse on the devnet test mint. Devnet-only; the
+-- faucet is hard-gated off on mainnet by the genesis-hash check.
+CREATE TABLE IF NOT EXISTS faucet_drips (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient   TEXT NOT NULL,
+  amount      BIGINT NOT NULL,
+  signature   TEXT NOT NULL,
+  network     TEXT NOT NULL,
+  ip          TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_faucet_drips_recipient_created
+  ON faucet_drips(recipient, created_at);

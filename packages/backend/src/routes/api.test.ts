@@ -601,7 +601,7 @@ describe("API integration tests", () => {
     try {
       assert.throws(
         () => loadOracleKeypair(cfg),
-        /Invalid keypair file/,
+        /Invalid oracle keypair file/,
         "must throw when file content is not a 64-byte array",
       );
 
@@ -610,7 +610,7 @@ describe("API integration tests", () => {
       __resetOracleKeypairCacheForTests();
       assert.throws(
         () => loadOracleKeypair(cfg),
-        /Invalid keypair file/,
+        /Invalid oracle keypair file/,
         "must throw when array length is not 64",
       );
     } finally {
