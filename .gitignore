@@ -7,3 +7,18 @@ data/
 .superpowers/
 .worktrees/
 package-lock.json
+
+# macOS
+.DS_Store
+
+# Solana / Anchor
+packages/backend/.secrets/
+*.keypair.json
+packages/program/.anchor/
+packages/program/target/
+test-ledger/
+packages/program/node_modules/
+.gitnexus
+
+# Claude Code local-only
+.claude/settings.local.json
