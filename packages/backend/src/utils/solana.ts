@@ -18,7 +18,6 @@ export interface SolanaConfig {
   programId: string;
   oracleKeypairPath?: string;
   oracleKeypairBase58?: string;
-  treasuryPubkey?: string;
   usdcMint: string;
 }
 
@@ -136,7 +135,6 @@ export function getSolanaConfig(): SolanaConfig {
     programId,
     oracleKeypairPath: process.env.ORACLE_KEYPAIR_PATH,
     oracleKeypairBase58: process.env.ORACLE_KEYPAIR_BASE58,
-    treasuryPubkey: process.env.TREASURY_PUBKEY,
     usdcMint,
   };
 }
