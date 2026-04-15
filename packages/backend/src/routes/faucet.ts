@@ -19,6 +19,13 @@ export async function faucetRoutes(app: FastifyInstance): Promise<void> {
   await app.register(async (scoped) => {
     await scoped.register(rateLimit, {
       global: false, // off by default, per-route via config
+      // Default @fastify/rate-limit hook is onRequest, which fires BEFORE
+      // body parsing — the keyGenerator below then sees `req.body === undefined`
+      // and falls through to ip-only keying, so every drip from the same IP
+      // shares a single slot regardless of recipient. Moving to preHandler
+      // runs the limiter after the JSON body parser, so keyGenerator can
+      // read recipient and bucket by wallet as intended.
+      hook: "preHandler",
     });
 
     scoped.get("/api/v1/faucet/status", async () => getFaucetStatus());
