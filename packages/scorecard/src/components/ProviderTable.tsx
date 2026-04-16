@@ -62,13 +62,17 @@ export function ProviderTable() {
             </p>
           </div>
         </div>
-        <p className="text-sm text-secondary font-sans">
-          New here?{" "}
+        <div className="flex flex-wrap gap-4 text-sm font-sans">
+          <Link to="/guide/agent" className="text-copper font-mono text-xs uppercase tracking-widest">
+            Agent Quickstart
+          </Link>
+          <Link to="/guide/underwriter" className="text-copper font-mono text-xs uppercase tracking-widest">
+            Underwriter Quickstart
+          </Link>
           <Link to="/faucet" className="text-copper font-mono text-xs uppercase tracking-widest">
-            Get TEST-USDC from the faucet
-          </Link>{" "}
-          to start on devnet.
-        </p>
+            Get TEST-USDC
+          </Link>
+        </div>
       </div>
 
       <NetworkActivity />

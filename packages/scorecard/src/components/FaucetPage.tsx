@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { usePhantom } from "../hooks/usePhantom";
 import {
   getFaucetStatus,
@@ -260,12 +261,16 @@ export function FaucetPage() {
         </p>
         <ul className="text-sm text-secondary font-sans space-y-2">
           <li>
-            • Want to insure your API calls as an Agent? See{" "}
-            <code className="font-mono text-copper">docs/agent-quickstart.md</code>.
+            • Want to insure your API calls as an Agent?{" "}
+            <Link to="/guide/agent" className="text-copper font-mono text-xs uppercase tracking-widest">
+              Agent Quickstart
+            </Link>
           </li>
           <li>
-            • Want to provide coverage and earn premiums as an Underwriter? See{" "}
-            <code className="font-mono text-copper">docs/underwriter-quickstart.md</code>.
+            • Want to provide coverage and earn premiums?{" "}
+            <Link to="/guide/underwriter" className="text-copper font-mono text-xs uppercase tracking-widest">
+              Underwriter Quickstart
+            </Link>
           </li>
         </ul>
       </div>
