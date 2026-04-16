@@ -1,6 +1,29 @@
 name: Build and Push to AR
 
 on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: string
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: false
+        type: string
+        default: "packages/backend/Dockerfile"
+      context:
+        description: "Docker build context directory"
+        required: false
+        type: string
+        default: "packages/backend"
+    outputs:
+      image:
+        description: "Full image URI that was built and pushed"
+        value: ${{ jobs.build.outputs.image }}
+      short_sha:
+        description: "Short commit SHA used as image tag"
+        value: ${{ jobs.build.outputs.short_sha }}
   workflow_dispatch:
     inputs:
       environment:
@@ -84,6 +107,7 @@ jobs:
 
       - name: Notify Success
         if: success()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.26.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
@@ -97,6 +121,7 @@ jobs:
 
       - name: Notify Failure
         if: failure()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.26.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_ID }}

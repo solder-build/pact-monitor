@@ -1,0 +1,39 @@
+name: Full Deploy (Build + Deploy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: false
+        default: "packages/backend/Dockerfile"
+      context:
+        description: "Docker build context directory"
+        required: false
+        default: "packages/backend"
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yaml
+    with:
+      environment: ${{ inputs.environment }}
+      dockerfile: ${{ inputs.dockerfile }}
+      context: ${{ inputs.context }}
+    secrets: inherit
+
+  deploy:
+    name: Deploy
+    needs: build
+    uses: ./.github/workflows/deploy.yaml
+    with:
+      environment: ${{ inputs.environment }}
+      image: ${{ needs.build.outputs.image }}
+    secrets: inherit

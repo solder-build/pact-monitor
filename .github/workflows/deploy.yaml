@@ -1,6 +1,16 @@
 name: Deploy to Cloud Run
 
 on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: string
+      image:
+        description: "Full image URI (leave empty for latest)"
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       environment:
@@ -81,6 +91,7 @@ jobs:
 
       - name: Notify Success
         if: success()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.26.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
@@ -94,6 +105,7 @@ jobs:
 
       - name: Notify Failure
         if: failure()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1.26.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
