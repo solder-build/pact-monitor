@@ -1,6 +1,7 @@
 # Pact Monitor — Agent Integration Examples
 
-Copy-paste examples showing how to integrate the Pact Monitor SDK into your agent.
+Copy-paste examples for the `@pact-network/monitor` SDK (no Solana deps).
+For insurance-SDK examples (on-chain policy + claims), see `samples/demo/`.
 
 ## Prerequisites
 
