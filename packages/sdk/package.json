@@ -13,8 +13,13 @@
     "test": "tsx --test src/*.test.ts"
   },
   "devDependencies": {
+    "@solana/web3.js": "^1.98.4",
     "@types/node": "^25.6.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
   }
 }
