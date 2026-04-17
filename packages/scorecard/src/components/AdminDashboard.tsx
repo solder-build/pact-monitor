@@ -1,5 +1,8 @@
+import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useAdminAnalytics } from "../hooks/useAdminAnalytics";
+import type { FlagRow } from "../api/admin-client";
+import { adminApi } from "../api/admin-client";
 
 const tooltipStyle = {
   background: "#1A1917",
@@ -38,6 +41,25 @@ function formatDay(day: string): string {
 export function AdminDashboard() {
   const { overview, backendHealth, ingestion, agents, scorecardUsage, costs, loading, error } = useAdminAnalytics();
 
+  const [activeTab, setActiveTab] = useState<"overview" | "flags">("overview");
+  const [flags, setFlags] = useState<FlagRow[]>([]);
+  const [flagsLoading, setFlagsLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === "flags") {
+      setFlagsLoading(true);
+      adminApi.getFlags("pending")
+        .then(setFlags)
+        .catch(() => setFlags([]))
+        .finally(() => setFlagsLoading(false));
+    }
+  }, [activeTab]);
+
+  const handleResolve = async (id: string, status: "dismissed" | "suspended") => {
+    await adminApi.resolveFlag(id, status);
+    setFlags((prev) => prev.filter((f) => f.id !== id));
+  };
+
   if (loading) {
     return <p className="text-neutral-500 font-mono text-sm">Loading analytics...</p>;
   }
@@ -46,8 +68,59 @@ export function AdminDashboard() {
     return <p className="text-sienna font-mono text-sm">Error: {error}</p>;
   }
 
+  const pendingCount = flags.filter((f) => f.status === "pending").length;
+
   return (
     <div>
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", borderBottom: "1px solid #333" }}>
+        <button
+          onClick={() => setActiveTab("overview")}
+          style={{
+            padding: "0.5rem 1rem",
+            background: activeTab === "overview" ? "#B87333" : "transparent",
+            color: activeTab === "overview" ? "#151311" : "#888",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: "'Inria Sans', sans-serif",
+            fontSize: "0.85rem",
+          }}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab("flags")}
+          style={{
+            padding: "0.5rem 1rem",
+            background: activeTab === "flags" ? "#B87333" : "transparent",
+            color: activeTab === "flags" ? "#151311" : "#888",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: "'Inria Sans', sans-serif",
+            fontSize: "0.85rem",
+            position: "relative",
+          }}
+        >
+          Flags
+          {pendingCount > 0 && (
+            <span style={{
+              position: "absolute",
+              top: 2,
+              right: -6,
+              background: "#C9553D",
+              color: "#fff",
+              fontSize: "0.65rem",
+              padding: "1px 5px",
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              {pendingCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === "overview" && (
+        <>
       <h2 className="font-serif text-lg text-neutral-300 mb-6">Admin Analytics</h2>
 
       {/* Overview cards */}
@@ -224,6 +297,74 @@ export function AdminDashboard() {
           )}
         </div>
       </div>
+        </>
+      )}
+
+      {activeTab === "flags" && (
+        <div>
+          <h3 className="font-serif text-base text-neutral-400 mb-4">Flagged Agents</h3>
+          {flagsLoading ? (
+            <p className="text-neutral-500 font-mono text-sm">Loading flags...</p>
+          ) : flags.length === 0 ? (
+            <p style={{ color: "#5A6B7A" }} className="font-mono text-sm">No pending flags</p>
+          ) : (
+            <table className="w-full font-mono text-xs">
+              <thead>
+                <tr className="text-neutral-500 border-b border-border">
+                  <th className="text-left py-2">Agent</th>
+                  <th className="text-left py-2">Reason</th>
+                  <th className="text-right py-2">Records 24h</th>
+                  <th className="text-right py-2">Claims 24h</th>
+                  <th className="text-left py-2">Flagged</th>
+                  <th className="text-center py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {flags.map((flag) => (
+                  <tr key={flag.id} className="border-b border-border/30">
+                    <td className="py-2 text-neutral-300">{flag.agent_id}</td>
+                    <td className="py-2 text-sienna">{flag.flag_reason}</td>
+                    <td className="py-2 text-right text-copper">{flag.records_24h.toLocaleString()}</td>
+                    <td className="py-2 text-right text-copper">{flag.claims_24h.toLocaleString()}</td>
+                    <td className="py-2 text-neutral-500">{new Date(flag.created_at).toLocaleDateString()}</td>
+                    <td className="py-2 text-center">
+                      <button
+                        onClick={() => handleResolve(flag.id, "dismissed")}
+                        style={{
+                          background: "#5A6B7A",
+                          color: "#fff",
+                          border: "none",
+                          padding: "0.2rem 0.6rem",
+                          cursor: "pointer",
+                          marginRight: "0.4rem",
+                          fontFamily: "'Inria Sans', sans-serif",
+                          fontSize: "0.75rem",
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                      <button
+                        onClick={() => handleResolve(flag.id, "suspended")}
+                        style={{
+                          background: "#C9553D",
+                          color: "#fff",
+                          border: "none",
+                          padding: "0.2rem 0.6rem",
+                          cursor: "pointer",
+                          fontFamily: "'Inria Sans', sans-serif",
+                          fontSize: "0.75rem",
+                        }}
+                      >
+                        Suspend
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   );
 }

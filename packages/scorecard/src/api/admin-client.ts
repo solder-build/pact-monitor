@@ -66,6 +66,34 @@ export interface CostRow {
   settlement_failures: number;
 }
 
+export interface FlagRow {
+  id: string;
+  agent_id: string;
+  agent_pubkey: string | null;
+  flag_reason: string;
+  flag_data: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  records_24h: number;
+  claims_24h: number;
+}
+
+async function adminPatch<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Admin PATCH ${path}: ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 export const adminApi = {
   getOverview: () => adminGet<OverviewData>("/overview"),
   getBackendHealth: () => adminGet<RouteHealth[]>("/backend-health"),
@@ -73,4 +101,8 @@ export const adminApi = {
   getAgents: () => adminGet<AgentsData>("/agents"),
   getScorecardUsage: () => adminGet<ScorecardUsageData>("/scorecard-usage"),
   getCosts: () => adminGet<CostRow[]>("/costs"),
+  getFlags: (status?: string) =>
+    adminGet<FlagRow[]>(status ? `/flags?status=${status}` : "/flags"),
+  resolveFlag: (id: string, status: "dismissed" | "suspended") =>
+    adminPatch<{ ok: boolean }>(`/flags/${id}`, { status }),
 };
