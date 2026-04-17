@@ -68,10 +68,9 @@ jobs:
           fi
 
           git add -A
-          git commit -m "chore: sync from pact-monitor@${SRC_SHA::7}
-
-Mirrored from solder-build/pact-monitor .claude/skills/pact-network/
-at ${SRC_SHA}."
+          git commit \
+            -m "chore: sync from pact-monitor@${SRC_SHA::7}" \
+            -m "Mirrored from solder-build/pact-monitor .claude/skills/pact-network/ at ${SRC_SHA}."
           git push origin HEAD:main
 
       - name: Notify Slack on failure
