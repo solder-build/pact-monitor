@@ -57,6 +57,11 @@ export async function verifyRecordSignature(
     return;
   }
 
+  if (!/^[A-Za-z0-9+/]+=*$/.test(signature)) {
+    reply.code(400).send({ error: "Malformed X-Pact-Signature (invalid base64)" });
+    return;
+  }
+
   const authed = request as FastifyRequest & { agentPubkey?: string };
   if (authed.agentPubkey && pubkeyHeader !== authed.agentPubkey) {
     reply.code(401).send({ error: "Signature pubkey does not match API key binding" });

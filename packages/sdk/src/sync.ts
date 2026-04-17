@@ -87,9 +87,13 @@ export class PactSync {
     };
 
     if (this.keypair) {
-      const serialized = serializeRecords(records);
-      headers["X-Pact-Signature"] = createSignature(serialized, this.keypair.secretKey);
-      headers["X-Pact-Pubkey"] = bs58.encode(this.keypair.publicKey);
+      try {
+        const serialized = serializeRecords(records);
+        headers["X-Pact-Signature"] = createSignature(serialized, this.keypair.secretKey);
+        headers["X-Pact-Pubkey"] = bs58.encode(this.keypair.publicKey);
+      } catch (err) {
+        console.warn("[pact-monitor] record signing failed, sending unsigned:", (err as Error).message);
+      }
     }
 
     const response = await globalThis.fetch(`${this.backendUrl}/api/v1/records`, {
