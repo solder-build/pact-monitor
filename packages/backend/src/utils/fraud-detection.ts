@@ -2,6 +2,8 @@ import { getOne, query } from "../db.js";
 
 const OUTAGE_AGENT_THRESHOLD = 5;
 const AGENT_HISTORY_DAYS = 7;
+const MIN_AGENT_CALLS = 20;
+const MIN_NETWORK_CALLS = 50;
 
 /**
  * Compute the premium loading factor based on agent vs network failure rate.
@@ -35,31 +37,36 @@ export function isOutage(establishedAgentsReporting: number): boolean {
 export async function getFailureRates(
   agentId: string,
   providerId: string,
-): Promise<{ agentRate: number; networkRate: number }> {
-  const result = await getOne<{ agent_failure_rate: string; network_failure_rate: string }>(
+): Promise<{ agentRate: number; networkRate: number; agentCalls: number; networkCalls: number }> {
+  const result = await getOne<{
+    agent_failure_rate: string;
+    network_failure_rate: string;
+    agent_calls: string;
+    network_calls: string;
+  }>(
     `WITH agent_stats AS (
-      SELECT COALESCE(
-        COUNT(*) FILTER (WHERE classification != 'success') * 100.0 / NULLIF(COUNT(*), 0),
-        0
-      ) AS agent_failure_rate
+      SELECT
+        COALESCE(COUNT(*) FILTER (WHERE classification != 'success') * 100.0 / NULLIF(COUNT(*), 0), 0) AS agent_failure_rate,
+        COUNT(*) AS agent_calls
       FROM call_records
       WHERE agent_id = $1 AND provider_id = $2 AND created_at > NOW() - INTERVAL '24 hours'
     ),
     network_stats AS (
-      SELECT COALESCE(
-        COUNT(*) FILTER (WHERE classification != 'success') * 100.0 / NULLIF(COUNT(*), 0),
-        0
-      ) AS network_failure_rate
+      SELECT
+        COALESCE(COUNT(*) FILTER (WHERE classification != 'success') * 100.0 / NULLIF(COUNT(*), 0), 0) AS network_failure_rate,
+        COUNT(*) AS network_calls
       FROM call_records
       WHERE provider_id = $2 AND created_at > NOW() - INTERVAL '24 hours'
     )
-    SELECT agent_failure_rate, network_failure_rate
+    SELECT agent_failure_rate, network_failure_rate, agent_calls, network_calls
     FROM agent_stats, network_stats`,
     [agentId, providerId],
   );
   return {
     agentRate: parseFloat(result?.agent_failure_rate ?? "0"),
     networkRate: parseFloat(result?.network_failure_rate ?? "0"),
+    agentCalls: parseInt(result?.agent_calls ?? "0", 10),
+    networkCalls: parseInt(result?.network_calls ?? "0", 10),
   };
 }
 
@@ -77,8 +84,8 @@ export async function countEstablishedFailingAgents(
      WHERE cr.provider_id = $1
        AND cr.classification != 'success'
        AND cr.created_at > NOW() - INTERVAL '1 hour'
-       AND ak.created_at < NOW() - INTERVAL '${AGENT_HISTORY_DAYS} days'`,
-    [providerId],
+       AND ak.created_at < NOW() - INTERVAL '1 day' * $2`,
+    [providerId, AGENT_HISTORY_DAYS],
   );
   return parseInt(result?.cnt ?? "0", 10);
 }
@@ -156,7 +163,12 @@ export async function detectAnomalies(
   providerId: string,
   logger?: { warn: (obj: Record<string, unknown>, msg: string) => void },
 ): Promise<number> {
-  const { agentRate, networkRate } = await getFailureRates(agentId, providerId);
+  const { agentRate, networkRate, agentCalls, networkCalls } = await getFailureRates(agentId, providerId);
+
+  // Skip penalty if insufficient sample size to avoid false positives
+  if (agentCalls < MIN_AGENT_CALLS || networkCalls < MIN_NETWORK_CALLS) {
+    return 1.0;
+  }
 
   // Check for real outage first
   const establishedCount = await countEstablishedFailingAgents(providerId);

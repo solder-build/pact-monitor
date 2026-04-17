@@ -41,13 +41,18 @@ export async function maybeCreateClaim(input: ClaimInput): Promise<string | null
   if (classification === "success") return null;
   if (!paymentAmount || paymentAmount <= 0) return null;
 
-  // Anti-fraud: skip claim if agent is flagged
+  // Anti-fraud: skip claim if agent is flagged (persist audit row)
   if (input.agentId) {
     const flagged = await hasPendingFlag(input.agentId);
     if (flagged) {
       input.logger?.warn(
         { agentId: input.agentId },
         "Skipping claim creation: agent is flagged",
+      );
+      await query(
+        `INSERT INTO claims (call_record_id, provider_id, agent_id, trigger_type, call_cost, refund_pct, refund_amount, status)
+         VALUES ($1, $2, $3, $4, $5, 0, 0, 'frozen')`,
+        [callRecordId, providerId, agentId, classification, paymentAmount],
       );
       return null;
     }
@@ -56,7 +61,7 @@ export async function maybeCreateClaim(input: ClaimInput): Promise<string | null
   // Anti-fraud: daily claim cap per agent
   if (input.agentId) {
     const dailyCount = await getOne<{ cnt: string }>(
-      "SELECT COUNT(*) AS cnt FROM claims WHERE agent_id = $1 AND created_at > NOW() - INTERVAL '1 day'",
+      "SELECT COUNT(*) AS cnt FROM claims WHERE agent_id = $1 AND status != 'frozen' AND created_at > NOW() - INTERVAL '1 day'",
       [input.agentId],
     );
     const count = parseInt(dailyCount?.cnt ?? "0", 10);

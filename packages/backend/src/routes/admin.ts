@@ -328,10 +328,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: "Flag not found" });
     }
 
-    await query(
-      "UPDATE agent_flags SET status = $1, resolved_at = NOW(), resolved_by = 'admin' WHERE id = $2",
+    // Guard: only resolve pending flags (idempotent)
+    const updated = await query(
+      "UPDATE agent_flags SET status = $1, resolved_at = NOW(), resolved_by = 'admin' WHERE id = $2 AND status = 'pending'",
       [status, id],
     );
+    if (updated.rowCount === 0) {
+      return reply.code(409).send({ error: "Flag already resolved" });
+    }
 
     if (status === "dismissed") {
       await query(

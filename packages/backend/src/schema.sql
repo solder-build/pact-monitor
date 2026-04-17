@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_pubkey TEXT;
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_label ON api_keys(label);
 CREATE INDEX IF NOT EXISTS idx_api_keys_agent_pubkey ON api_keys(agent_pubkey);
 
 CREATE TABLE IF NOT EXISTS claims (
@@ -99,7 +100,7 @@ CREATE TABLE IF NOT EXISTS claims (
   call_cost       BIGINT,
   refund_pct      INTEGER NOT NULL,
   refund_amount   BIGINT,
-  status          TEXT NOT NULL DEFAULT 'simulated' CHECK (status IN ('detected', 'simulated', 'submitted', 'settled')),
+  status          TEXT NOT NULL DEFAULT 'simulated' CHECK (status IN ('detected', 'simulated', 'submitted', 'settled', 'frozen')),
   tx_hash         TEXT,
   settlement_slot BIGINT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

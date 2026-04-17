@@ -2,7 +2,6 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireApiKey, verifyRecordSignature } from "../middleware/auth.js";
 import { query, getOne } from "../db.js";
 import { maybeCreateClaim } from "../utils/claims.js";
-import { RateLimiter } from "../utils/rate-limiter.js";
 import { detectAnomalies } from "../utils/fraud-detection.js";
 import { getEffectiveRate } from "../utils/insurance.js";
 
@@ -29,11 +28,7 @@ interface RecordsBody {
 
 const MAX_BATCH_SIZE = 500;
 const MAX_RECORDS_PER_HOUR = 10_000;
-
-const recordsLimiter = new RateLimiter({
-  maxPerWindow: MAX_RECORDS_PER_HOUR,
-  windowMs: 3600_000,
-});
+const RATE_LIMIT_WARNING_THRESHOLD = 0.8;
 
 async function findOrCreateProvider(hostname: string): Promise<string> {
   const existing = await getOne<{ id: string }>(
@@ -71,17 +66,21 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
         agentPubkey: string | null;
       };
 
-      const rateResult = recordsLimiter.increment(authed.agentId, records.length);
-      if (!rateResult.allowed) {
+      // DB-backed hourly rate limit (works across instances and restarts)
+      const hourlyCount = await getOne<{ cnt: string }>(
+        "SELECT COUNT(*) AS cnt FROM call_records WHERE agent_id = $1 AND created_at > NOW() - INTERVAL '1 hour'",
+        [authed.agentId],
+      );
+      const currentHourly = parseInt(hourlyCount?.cnt ?? "0", 10);
+      if (currentHourly + records.length > MAX_RECORDS_PER_HOUR) {
         return reply.code(429).send({
           error: "Rate limit exceeded",
-          remaining: rateResult.remaining,
-          resetAt: new Date(rateResult.resetAt).toISOString(),
+          remaining: Math.max(0, MAX_RECORDS_PER_HOUR - currentHourly),
         });
       }
-      if (rateResult.warning) {
+      if (currentHourly >= MAX_RECORDS_PER_HOUR * RATE_LIMIT_WARNING_THRESHOLD) {
         request.log.warn(
-          { agentId: authed.agentId, remaining: rateResult.remaining },
+          { agentId: authed.agentId, currentHourly, limit: MAX_RECORDS_PER_HOUR },
           "Agent approaching hourly rate limit (80%)",
         );
       }
