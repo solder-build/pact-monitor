@@ -1,0 +1,88 @@
+name: Sync pact-network skill
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".claude/skills/pact-network/**"
+      - "packages/monitor/src/types.ts"
+      - "packages/insurance/src/types.ts"
+      - "scripts/validate-skill-fields.sh"
+      - ".github/workflows/sync-skill.yaml"
+  pull_request:
+    paths:
+      - ".claude/skills/pact-network/**"
+      - "packages/monitor/src/types.ts"
+      - "packages/insurance/src/types.ts"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate skill covers SDK surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run field validator
+        run: ./scripts/validate-skill-fields.sh
+
+  sync:
+    name: Mirror to solder-build/pact-skill
+    needs: validate
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pact-monitor
+        uses: actions/checkout@v4
+        with:
+          path: pact-monitor
+
+      - name: Checkout pact-skill
+        uses: actions/checkout@v4
+        with:
+          repository: solder-build/pact-skill
+          token: ${{ secrets.ORG_GITHUB_TOKEN }}
+          path: pact-skill
+
+      - name: Mirror skill directory
+        run: |
+          set -euo pipefail
+          SRC="pact-monitor/.claude/skills/pact-network/"
+          DST="pact-skill/"
+
+          # Clear anything inside pact-skill that is not .git/, then rsync.
+          find "$DST" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+          rsync -a --exclude ".DS_Store" "$SRC" "$DST"
+
+      - name: Commit and push
+        working-directory: pact-skill
+        env:
+          SRC_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "chore: sync from pact-monitor@${SRC_SHA::7}
+
+Mirrored from solder-build/pact-monitor .claude/skills/pact-network/
+at ${SRC_SHA}."
+          git push origin HEAD:main
+
+      - name: Notify Slack on failure
+        if: failure()
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-message: |
+            :x: *pact-skill sync failed*
+            Source: ${{ github.repository }}@${{ github.sha }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
