@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireApiKey } from "../middleware/auth.js";
 import { query, getOne } from "../db.js";
 import { maybeCreateClaim } from "../utils/claims.js";
+import { RateLimiter } from "../utils/rate-limiter.js";
+import { detectAnomalies } from "../utils/fraud-detection.js";
 
 interface RecordInput {
   hostname: string;
@@ -23,6 +25,14 @@ interface RecordInput {
 interface RecordsBody {
   records: RecordInput[];
 }
+
+const MAX_BATCH_SIZE = 500;
+const MAX_RECORDS_PER_HOUR = 10_000;
+
+const recordsLimiter = new RateLimiter({
+  maxPerWindow: MAX_RECORDS_PER_HOUR,
+  windowMs: 3600_000,
+});
 
 async function findOrCreateProvider(hostname: string): Promise<string> {
   const existing = await getOne<{ id: string }>(
@@ -49,10 +59,32 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: "records array is required" });
       }
 
+      if (records.length > MAX_BATCH_SIZE) {
+        return reply.code(400).send({
+          error: `Batch size ${records.length} exceeds maximum of ${MAX_BATCH_SIZE}`,
+        });
+      }
+
       const authed = request as FastifyRequest & {
         agentId: string;
         agentPubkey: string | null;
       };
+
+      const rateResult = recordsLimiter.increment(authed.agentId, records.length);
+      if (!rateResult.allowed) {
+        return reply.code(429).send({
+          error: "Rate limit exceeded",
+          remaining: rateResult.remaining,
+          resetAt: new Date(rateResult.resetAt).toISOString(),
+        });
+      }
+      if (rateResult.warning) {
+        request.log.warn(
+          { agentId: authed.agentId, remaining: rateResult.remaining },
+          "Agent approaching hourly rate limit (80%)",
+        );
+      }
+
       const agentId = authed.agentId;
       const agentPubkey = authed.agentPubkey;
       const providerIds = new Set<string>();
@@ -115,6 +147,16 @@ export async function recordsRoutes(app: FastifyInstance): Promise<void> {
         });
 
         accepted++;
+      }
+
+      // Run anomaly detection per provider touched in this batch
+      const uniqueProviders = [...providerIds];
+      for (const pid of uniqueProviders) {
+        try {
+          await detectAnomalies(authed.agentId, authed.agentPubkey ?? null, pid, request.log);
+        } catch (err) {
+          request.log.error({ err, providerId: pid }, "Anomaly detection failed");
+        }
       }
 
       // Update provider wallet_address from payment data if available
