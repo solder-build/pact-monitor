@@ -342,7 +342,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
     if (status === "suspended") {
       await query(
-        "UPDATE api_keys SET is_active = false WHERE label = $1",
+        "UPDATE api_keys SET status = 'suspended' WHERE label = $1",
         [flag.agent_id],
       );
     }
