@@ -48,15 +48,14 @@ import {
 } from "@solana/web3.js";
 import {
   createAccount,
-  createApproveInstruction,
   getAccount,
   getMint,
   mintToChecked,
 } from "@solana/spl-token";
 import * as anchor from "@anchor-lang/core";
 import { Program } from "@anchor-lang/core";
-import BN from "bn.js";
 import { pactMonitor } from "@pact-network/monitor";
+import { PactInsurance } from "@pact-network/insurance";
 
 // -------- config --------
 
@@ -267,38 +266,30 @@ async function main() {
   );
   log("agent", `funded with ${formatUsdc(INITIAL_USDC)} in ATA ${agentAta.toBase58()}`);
 
-  // -------- enable_insurance --------
-  const [policyPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("policy"), poolPda.toBuffer(), agent.publicKey.toBuffer()],
-    PROGRAM_ID,
+  // -------- enable_insurance (via @pact-network/insurance SDK) --------
+  const insurance = new PactInsurance(
+    { rpcUrl: RPC_URL, programId: PROGRAM_ID.toBase58() },
+    agent,
   );
 
-  const approveIx = createApproveInstruction(
-    agentAta,
-    poolPda,
-    agent.publicKey,
-    ALLOWANCE_USDC,
-  );
   // H-05: expires_at must be strictly in the future.
-  const enableIx = await (program.methods as any)
-    .enableInsurance({
-      agentId: `demo-${Date.now().toString(36)}`,
-      expiresAt: new BN(Math.floor(Date.now() / 1000) + 30 * 86400),
-    })
-    .accounts({
-      config: protocolPda,
-      pool: poolPda,
-      policy: policyPda,
-      agentTokenAccount: agentAta,
-      agent: agent.publicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .instruction();
-
-  const enableTx = new Transaction().add(approveIx).add(enableIx);
-  const enableSig = await provider.sendAndConfirm(enableTx, [agent]);
+  const enableSig = await insurance.enableInsurance({
+    providerHostname: HOSTNAME,
+    allowanceUsdc: ALLOWANCE_USDC,
+    expiresAt: BigInt(Math.floor(Date.now() / 1000) + 30 * 86400),
+    agentId: `demo-${Date.now().toString(36)}`,
+  });
   log("enable", `policy active (tx ${enableSig.slice(0, 16)}...)`);
   log("enable", `explorer: https://explorer.solana.com/tx/${enableSig}?cluster=devnet`);
+
+  const policy = await insurance.getPolicy(HOSTNAME);
+  if (policy) {
+    log(
+      "policy",
+      `agent_id=${policy.agentId} delegated=${formatUsdc(policy.delegatedAmount)} ` +
+        `expires_at=${policy.expiresAt}`,
+    );
+  }
   console.log("");
 
   // -------- wire up backend (API key only; provider row auto-created on first POST) --------
