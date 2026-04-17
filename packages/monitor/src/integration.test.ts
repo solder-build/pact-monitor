@@ -24,7 +24,7 @@
 //   - postgres reachable from the backend (not from this test directly — we
 //     don't touch pg, we only hit HTTP routes)
 //
-// Run from packages/sdk/:
+// Run from packages/monitor/:
 //   ADMIN_TOKEN=<token> npm test
 //
 // Why not mock? We already have wrapper.test.ts for mocked unit tests.

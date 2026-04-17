@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { pactMonitor } from "../../packages/sdk/src/index.js";
+import { pactMonitor } from "../../packages/monitor/src/index.js";
 
 const PACT_API_KEY = process.env.PACT_API_KEY;
 const PACT_BACKEND_URL = process.env.PACT_BACKEND_URL || "http://localhost:3001";

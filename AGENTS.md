@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **pact-network** (878 symbols, 1703 relationships, 41 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **sdk-publish-prep** (884 symbols, 1722 relationships, 40 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -17,7 +17,7 @@ This project is indexed by GitNexus as **pact-network** (878 symbols, 1703 relat
 
 1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
 2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/pact-network/process/{processName}` — trace the full execution flow step by step
+3. `READ gitnexus://repo/sdk-publish-prep/process/{processName}` — trace the full execution flow step by step
 4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
 
 ## When Refactoring
@@ -56,10 +56,10 @@ This project is indexed by GitNexus as **pact-network** (878 symbols, 1703 relat
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/pact-network/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/pact-network/clusters` | All functional areas |
-| `gitnexus://repo/pact-network/processes` | All execution flows |
-| `gitnexus://repo/pact-network/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/sdk-publish-prep/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/sdk-publish-prep/clusters` | All functional areas |
+| `gitnexus://repo/sdk-publish-prep/processes` | All execution flows |
+| `gitnexus://repo/sdk-publish-prep/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 

@@ -157,7 +157,7 @@ backend/
 
 ---
 
-## `packages/sdk/` — `@pact-network/monitor`
+## `packages/monitor/` — `@pact-network/monitor`
 
 Drop-in `fetch()` wrapper for AI agent apps. Records call metadata, syncs to backend.
 
@@ -308,7 +308,7 @@ The `superpowers/` files are the design history — read them when you need to u
 | Add a new instruction | `programs/pact-insurance/src/instructions/<new>.rs` + register in `mod.rs` + dispatch in `lib.rs` |
 | Add a new backend route | `packages/backend/src/routes/<new>.ts` + register in `index.ts` |
 | Change crank cadence | `packages/backend/src/crank/index.ts` (CRANK_INTERVAL_MS env var) |
-| Add a new SDK event | `packages/sdk/src/wrapper.ts` (extend EventEmitter usage) |
+| Add a new SDK event | `packages/monitor/src/wrapper.ts` (extend EventEmitter usage) |
 | Add a new scorecard page | `packages/scorecard/src/components/<New>.tsx` + route in `App.tsx` |
 | Change deployed program ID | `programs/pact-insurance/src/lib.rs` (`declare_id!`) + `Anchor.toml` |
 | Update DB schema | `packages/backend/src/schema.sql` (idempotent IF NOT EXISTS only) |

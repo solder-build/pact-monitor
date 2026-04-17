@@ -1,13 +1,39 @@
 {
   "name": "@pact-network/insurance",
   "version": "0.1.2",
+  "description": "TypeScript SDK for Pact Network's on-chain parametric insurance program on Solana — enable insurance, top up delegations, submit claims, and query pool state.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "idl",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pact-network",
+    "solana",
+    "anchor",
+    "insurance",
+    "parametric",
+    "x402",
+    "agent"
+  ],
+  "homepage": "https://pactnetwork.io",
+  "bugs": {
+    "url": "https://pactnetwork.io"
+  },
+  "license": "MIT",
+  "author": "Pact Network",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test src/*.test.ts",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@anchor-lang/core": "^1.0.0",

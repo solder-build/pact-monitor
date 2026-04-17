@@ -1,0 +1,48 @@
+{
+  "name": "@pact-network/monitor",
+  "version": "0.1.2",
+  "description": "TypeScript SDK that wraps fetch() to monitor AI agent API reliability and sync call records to the Pact Network scorecard.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pact-network",
+    "solana",
+    "x402",
+    "api-monitoring",
+    "reliability",
+    "insurance",
+    "agent",
+    "fetch"
+  ],
+  "homepage": "https://pactnetwork.io",
+  "bugs": {
+    "url": "https://pactnetwork.io"
+  },
+  "license": "MIT",
+  "author": "Pact Network",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "tsx --test src/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "@types/node": "^25.6.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
+  }
+}

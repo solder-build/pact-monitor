@@ -50,7 +50,7 @@ Imagine three groups of people, all settling in USDC on Solana:
 
 ```
 ┌────────────────────────────┐    POST /api/v1/records          ┌────────────────────────────┐
-│ packages/sdk               │ ───────────────────────────────► │ packages/backend           │
+│ packages/monitor               │ ───────────────────────────────► │ packages/backend           │
 │ @pact-network/monitor      │                                  │ @pact-network/backend      │
 │                            │ ◄─────────────────────────────── │                            │
 │ Wraps fetch(), classifies  │   GET /api/v1/providers          │ Fastify + Postgres         │
@@ -187,7 +187,7 @@ Imagine three groups of people, all settling in USDC on Solana:
 
 - **`packages/program/programs/pact-insurance/src/`** — the rules. Rust code that runs on Solana. Holds the money. Doesn't trust anyone.
 - **`packages/backend/`** — the trusted oracle. Watches API calls, runs the crank, submits claims. Authority key is in a Cloud Run secret.
-- **`packages/sdk/`** — `@pact-network/monitor`. Drop-in `fetch()` wrapper for AI agent apps. Records call metadata to local JSON, syncs to backend on a timer.
+- **`packages/monitor/`** — `@pact-network/monitor`. Drop-in `fetch()` wrapper for AI agent apps. Records call metadata to local JSON, syncs to backend on a timer.
 - **`packages/insurance/`** — `@pact-network/insurance`. Agent-side Solana client. Builds the `enable_insurance` tx with the SPL approve baked in. Subscribes to billing/low-balance events.
 - **`packages/scorecard/`** — Vite+React dashboard at pactnetwork.io. Lists providers, shows pools, displays claim history. The "marketing surface" of the protocol.
 

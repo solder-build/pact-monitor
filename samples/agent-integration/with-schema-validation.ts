@@ -2,7 +2,7 @@
 // Detects when an API returns 200 but the body structure is unexpected.
 // Run: pnpm tsx samples/agent-integration/with-schema-validation.ts
 
-import { pactMonitor } from "../../packages/sdk/src/index.js";
+import { pactMonitor } from "../../packages/monitor/src/index.js";
 
 const monitor = pactMonitor({
   apiKey: process.env.PACT_API_KEY,

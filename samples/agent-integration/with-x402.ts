@@ -4,7 +4,7 @@
 // This example uses manual usdcAmount override for demonstration.
 // Run: pnpm tsx samples/agent-integration/with-x402.ts
 
-import { pactMonitor } from "../../packages/sdk/src/index.js";
+import { pactMonitor } from "../../packages/monitor/src/index.js";
 
 const monitor = pactMonitor({
   apiKey: process.env.PACT_API_KEY,

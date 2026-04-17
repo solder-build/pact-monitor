@@ -24,7 +24,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pactMonitor } from "../packages/sdk/dist/index.js";
+import { pactMonitor } from "../packages/monitor/dist/index.js";
 
 const BASE = process.env.BASE ?? "http://localhost:3001";
 const API_KEY = process.env.API_KEY;

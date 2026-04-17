@@ -1,33 +1,33 @@
 # Pact Network — Samples
 
 ## demo/
-Live runnable demos. Call real Solana APIs through the SDK and sync to the local backend. Point the scorecard at the same backend to see things update in real time.
+Runnable demos that call real Solana APIs through both SDKs and sync to a
+local backend. Point the scorecard at the same backend to see things
+update in real time.
 
-### `monitor.ts` — Phase 1/2 reliability monitoring
-Hits 5 canonical providers in rounds, records to backend, prints a latency/failure summary.
+### Monitor
+- **`monitor.ts`** — 5-provider reliability loop. Prints a latency/failure
+  summary; scorecard updates live.
 
-```bash
-cd samples/demo
-pnpm tsx monitor.ts          # default 5 rounds
-pnpm tsx monitor.ts 10       # custom rounds
-```
+### Insurance
+- **`insurance-basic.ts`** — standalone `PactInsurance`: enable policy,
+  estimate premium, read policy state.
+- **`monitor-plus-insurance.ts`** — both SDKs composed: signed monitor
+  batches, on-chain policy, `monitor.on("failure")` for local alerting.
+- **`insured-agent.ts`** — flagship Phase 3 flow. Creates a fresh agent,
+  funds it with test USDC, enables insurance via the SDK, runs N success
+  + 1 forced-failure calls, prints on-chain pool deltas + explorer links.
 
-### `insured-agent.ts` — Phase 3 full on-chain flow
-Creates a fresh agent keypair, funds it with test USDC, enables on-chain insurance on a target pool via SPL delegation, runs N successful calls + 1 forced failure through the monitor SDK, then shows the pool state delta including a real on-chain refund.
-
-```bash
-cd samples/demo
-pnpm tsx insured-agent.ts api.dexscreener.com 3
-pnpm tsx insured-agent.ts api.coingecko.com 5
-```
-
-Pre-reqs: backend + postgres running, pools seeded (`seed-devnet-pools.ts`), Phantom wallet funded on devnet.
+See `samples/demo/README.md` for exact commands and per-demo pre-reqs.
 
 ## playground/
 Browser-based monitor playground. Paste any URL, click Monitor, see the result. Open `samples/playground/index.html` in your browser.
 
 ## agent-integration/
-Copy-paste examples for integrating the SDK into your agent:
+Copy-paste examples for integrating the **monitor** SDK into your agent
+(no Solana deps):
 - `basic.ts` — Minimal 10-line integration
 - `with-schema-validation.ts` — Detect broken API responses
 - `with-x402.ts` — Track USDC payment amounts
+
+For insurance-SDK examples (on-chain policy + claims), see `samples/demo/`.
