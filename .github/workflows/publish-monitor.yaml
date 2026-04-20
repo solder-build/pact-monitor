@@ -1,4 +1,4 @@
-name: Publish @pact-network/monitor
+name: Publish @q3labs/pact-monitor
 
 on:
   push:
@@ -34,10 +34,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Test
-        run: pnpm --filter @pact-network/monitor test
+        run: pnpm --filter @q3labs/pact-monitor test
 
       - name: Build
-        run: pnpm --filter @pact-network/monitor build
+        run: pnpm --filter @q3labs/pact-monitor build
 
       - name: Check if version already published
         id: check
