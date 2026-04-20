@@ -51,7 +51,7 @@ Imagine three groups of people, all settling in USDC on Solana:
 ```
 ┌────────────────────────────┐    POST /api/v1/records          ┌────────────────────────────┐
 │ packages/monitor               │ ───────────────────────────────► │ packages/backend           │
-│ @pact-network/monitor      │                                  │ @pact-network/backend      │
+│ @q3labs/pact-monitor      │                                  │ @pact-network/backend      │
 │                            │ ◄─────────────────────────────── │                            │
 │ Wraps fetch(), classifies  │   GET /api/v1/providers          │ Fastify + Postgres         │
 │ failures, syncs to backend.│   GET /api/v1/pools              │                            │
@@ -61,7 +61,7 @@ Imagine three groups of people, all settling in USDC on Solana:
                                                                  │      services/claim-       │
 ┌────────────────────────────┐                                   │              settlement.ts │
 │ packages/insurance         │                                   └─────────┬────────┬─────────┘
-│ @pact-network/insurance    │                                             │        │
+│ @q3labs/pact-insurance    │                                             │        │
 │ NEW package                │                                             │        │ submit_claim
 │                            │  enable_insurance                           │        │ settle_premium
 │ Builds tx for SPL approve  │  (SPL approve +                             │        │ update_rates
@@ -109,7 +109,7 @@ Imagine three groups of people, all settling in USDC on Solana:
 
 ### Day 1 — an agent enables insurance
 
-5. An AI agent app uses the `@pact-network/insurance` SDK:
+5. An AI agent app uses the `@q3labs/pact-insurance` SDK:
    ```typescript
    const pact = new PactInsurance({
      rpcUrl: "https://api.devnet.solana.com",
@@ -131,7 +131,7 @@ Imagine three groups of people, all settling in USDC on Solana:
 
 ### Day 2 — the agent makes some API calls
 
-8. Agent uses the existing `@pact-network/monitor` SDK:
+8. Agent uses the existing `@q3labs/pact-monitor` SDK:
    ```typescript
    const monitor = new PactMonitor({
      apiKey: "pact_xyz",
@@ -187,8 +187,8 @@ Imagine three groups of people, all settling in USDC on Solana:
 
 - **`packages/program/programs/pact-insurance/src/`** — the rules. Rust code that runs on Solana. Holds the money. Doesn't trust anyone.
 - **`packages/backend/`** — the trusted oracle. Watches API calls, runs the crank, submits claims. Authority key is in a Cloud Run secret.
-- **`packages/monitor/`** — `@pact-network/monitor`. Drop-in `fetch()` wrapper for AI agent apps. Records call metadata to local JSON, syncs to backend on a timer.
-- **`packages/insurance/`** — `@pact-network/insurance`. Agent-side Solana client. Builds the `enable_insurance` tx with the SPL approve baked in. Subscribes to billing/low-balance events.
+- **`packages/monitor/`** — `@q3labs/pact-monitor`. Drop-in `fetch()` wrapper for AI agent apps. Records call metadata to local JSON, syncs to backend on a timer.
+- **`packages/insurance/`** — `@q3labs/pact-insurance`. Agent-side Solana client. Builds the `enable_insurance` tx with the SPL approve baked in. Subscribes to billing/low-balance events.
 - **`packages/scorecard/`** — Vite+React dashboard at pactnetwork.io. Lists providers, shows pools, displays claim history. The "marketing surface" of the protocol.
 
 ## What you should ACTUALLY know to be productive on this codebase

@@ -1,6 +1,6 @@
 ---
 name: pact-integration
-description: "Use when wiring @pact-network/monitor and @pact-network/insurance together in the same agent, or integrating Pact into an AI framework (Anthropic/OpenAI SDK, Express, Fastify, Next.js). Examples: \"connect monitor and insurance\", \"use Pact with the Anthropic SDK\", \"add Pact to my Fastify server\""
+description: "Use when wiring @q3labs/pact-monitor and @q3labs/pact-insurance together in the same agent, or integrating Pact into an AI framework (Anthropic/OpenAI SDK, Express, Fastify, Next.js). Examples: \"connect monitor and insurance\", \"use Pact with the Anthropic SDK\", \"add Pact to my Fastify server\""
 ---
 
 # Pact Monitor + Insurance — Composed Integration
@@ -11,8 +11,8 @@ Most agents want both SDKs active: `monitor` records reliability evidence with s
 
 ```typescript
 import { Keypair } from "@solana/web3.js";
-import { pactMonitor } from "@pact-network/monitor";
-import { PactInsurance } from "@pact-network/insurance";
+import { pactMonitor } from "@q3labs/pact-monitor";
+import { PactInsurance } from "@q3labs/pact-insurance";
 import fs from "fs";
 
 const agent = Keypair.fromSecretKey(
@@ -137,7 +137,7 @@ Place monitor init in a server-only module (never in a React component):
 ```typescript
 // lib/pact.ts  (server-only)
 import "server-only";
-import { pactMonitor } from "@pact-network/monitor";
+import { pactMonitor } from "@q3labs/pact-monitor";
 
 export const monitor = pactMonitor({ /* ... */ });
 ```

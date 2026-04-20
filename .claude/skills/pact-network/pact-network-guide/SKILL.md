@@ -13,8 +13,8 @@ Pact Network is parametric micro-insurance for AI agent API payments on Solana. 
 
 | Package | Role |
 |---|---|
-| `@pact-network/monitor` | Passive reliability tracker. Wraps `fetch()`, records latency/failures/payment headers, syncs signed batches to the backend. |
-| `@pact-network/insurance` | Active on-chain policy manager. Talks to Solana via Anchor: enable policies, delegate USDC budget, submit claims, read policy state. |
+| `@q3labs/pact-monitor` | Passive reliability tracker. Wraps `fetch()`, records latency/failures/payment headers, syncs signed batches to the backend. |
+| `@q3labs/pact-insurance` | Active on-chain policy manager. Talks to Solana via Anchor: enable policies, delegate USDC budget, submit claims, read policy state. |
 
 They're **complementary**, not alternatives. Monitor generates the evidence; insurance turns that evidence into a USDC refund when a paid call fails.
 

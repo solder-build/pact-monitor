@@ -1,17 +1,17 @@
 ---
 name: pact-insurance
-description: "Use when integrating @pact-network/insurance — enabling an on-chain policy, estimating per-call premium, reading policy state, topping up USDC delegation, or submitting claims. Examples: \"enable insurance for this hostname\", \"refund a failed call\", \"check my policy\""
+description: "Use when integrating @q3labs/pact-insurance — enabling an on-chain policy, estimating per-call premium, reading policy state, topping up USDC delegation, or submitting claims. Examples: \"enable insurance for this hostname\", \"refund a failed call\", \"check my policy\""
 ---
 
 # Pact Insurance — SDK Integration
 
-`@pact-network/insurance` manages on-chain parametric insurance policies on Solana. Agents enable a policy per provider, delegate a USDC budget, and receive on-chain refunds when paid calls fail.
+`@q3labs/pact-insurance` manages on-chain parametric insurance policies on Solana. Agents enable a policy per provider, delegate a USDC budget, and receive on-chain refunds when paid calls fail.
 
 ## Install
 
 ```bash
-npm install @pact-network/insurance @solana/web3.js
-# or pnpm add @pact-network/insurance @solana/web3.js
+npm install @q3labs/pact-insurance @solana/web3.js
+# or pnpm add @q3labs/pact-insurance @solana/web3.js
 ```
 
 ## Agent Keypair
@@ -30,7 +30,7 @@ const agent = Keypair.fromSecretKey(
 ## Initialize
 
 ```typescript
-import { PactInsurance } from "@pact-network/insurance";
+import { PactInsurance } from "@q3labs/pact-insurance";
 
 const insurance = new PactInsurance(
   {

@@ -1,17 +1,17 @@
 ---
 name: pact-monitor
-description: "Use when integrating @pact-network/monitor — wrapping fetch() calls to track API reliability, configuring backend sync, signing batches with an Ed25519 keypair, or reading local records. Examples: \"add monitor to my agent\", \"track failures for this API\", \"sign pact batches\""
+description: "Use when integrating @q3labs/pact-monitor — wrapping fetch() calls to track API reliability, configuring backend sync, signing batches with an Ed25519 keypair, or reading local records. Examples: \"add monitor to my agent\", \"track failures for this API\", \"sign pact batches\""
 ---
 
 # Pact Monitor — SDK Integration
 
-`@pact-network/monitor` wraps `fetch()` to silently record reliability data (latency, failures, payment headers) and syncs it to the Pact Network backend.
+`@q3labs/pact-monitor` wraps `fetch()` to silently record reliability data (latency, failures, payment headers) and syncs it to the Pact Network backend.
 
 ## Install
 
 ```bash
-npm install @pact-network/monitor
-# or pnpm add @pact-network/monitor
+npm install @q3labs/pact-monitor
+# or pnpm add @q3labs/pact-monitor
 ```
 
 For signed batches (anti-fraud):
@@ -23,7 +23,7 @@ npm install @solana/web3.js
 ## Initialize
 
 ```typescript
-import { pactMonitor } from "@pact-network/monitor";
+import { pactMonitor } from "@q3labs/pact-monitor";
 
 const monitor = pactMonitor({
   apiKey: process.env.PACT_API_KEY,      // required if syncEnabled

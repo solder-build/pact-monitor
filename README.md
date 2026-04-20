@@ -19,8 +19,8 @@ Provider tiers:
 
 ```
 packages/
-  sdk/        @pact-network/monitor    TypeScript SDK wrapping fetch()
-  insurance/  @pact-network/insurance  Agent-side SDK for on-chain policies (Phase 3)
+  sdk/        @q3labs/pact-monitor     TypeScript SDK wrapping fetch()
+  insurance/  @q3labs/pact-insurance   Agent-side SDK for on-chain policies (Phase 3)
   backend/    @pact-network/backend    Fastify API server + PostgreSQL + Solana crank
   scorecard/  @pact-network/scorecard  Vite + React + Tailwind dashboard
   program/                             Anchor program (Solana on-chain insurance)
@@ -83,7 +83,7 @@ pnpm dev:scorecard
 ## SDK Usage
 
 ```typescript
-import { pactMonitor } from "@pact-network/monitor";
+import { pactMonitor } from "@q3labs/pact-monitor";
 
 const monitor = pactMonitor({
   backendUrl: "https://pactnetwork.io/api/v1",
