@@ -1,6 +1,6 @@
 # Pact Network — Demo Scripts
 
-Runnable demos that exercise both SDKs (`@pact-network/monitor` and
+Runnable demos that exercise both SDKs (`@q3labs/pact-monitor` and
 `@pact-network/insurance`) against real Solana APIs and a local backend.
 
 ## Setup

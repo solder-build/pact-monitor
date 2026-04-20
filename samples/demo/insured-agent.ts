@@ -2,7 +2,7 @@
 //
 // This script demonstrates the complete "AI agent buys insurance, makes
 // calls, gets refunded on failures" pipeline end-to-end, using both SDKs
-// (@pact-network/monitor and @pact-network/insurance) against real
+// (@q3labs/pact-monitor and @pact-network/insurance) against real
 // devnet on-chain state + a locally running backend.
 //
 // It does, in order:
@@ -54,7 +54,7 @@ import {
 } from "@solana/spl-token";
 import * as anchor from "@anchor-lang/core";
 import { Program } from "@anchor-lang/core";
-import { pactMonitor } from "@pact-network/monitor";
+import { pactMonitor } from "@q3labs/pact-monitor";
 import { PactInsurance } from "@pact-network/insurance";
 
 // -------- config --------

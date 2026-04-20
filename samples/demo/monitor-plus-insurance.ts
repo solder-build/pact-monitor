@@ -14,7 +14,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Keypair } from "@solana/web3.js";
-import { pactMonitor } from "@pact-network/monitor";
+import { pactMonitor } from "@q3labs/pact-monitor";
 import { PactInsurance } from "@pact-network/insurance";
 
 const HOSTNAME = process.argv[2] || "api.coingecko.com";

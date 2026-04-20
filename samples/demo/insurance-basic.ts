@@ -1,6 +1,6 @@
 // Pact Insurance — Minimal On-Chain Integration
 // Enable a parametric insurance policy, estimate per-call premium, read
-// policy state. Pairs with @pact-network/monitor but stands alone here.
+// policy state. Pairs with @q3labs/pact-monitor but stands alone here.
 //
 // Run: pnpm --filter @pact-network/sample-demo exec tsx insurance-basic.ts <provider-hostname>
 //

@@ -1,5 +1,5 @@
 {
-  "name": "@pact-network/monitor",
+  "name": "@q3labs/pact-monitor",
   "version": "0.1.3",
   "description": "TypeScript SDK that wraps fetch() to monitor AI agent API reliability and sync call records to the Pact Network scorecard.",
   "type": "module",

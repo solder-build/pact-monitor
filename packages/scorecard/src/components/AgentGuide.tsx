@@ -106,7 +106,7 @@ pnpm tsx insured-agent.ts api.coingecko.com 5`}
           3. Use the SDK in your own code
         </h3>
         <pre className="bg-surface-light border border-border p-4 text-xs font-mono text-primary overflow-x-auto">
-{`import { pactMonitor } from "@pact-network/monitor";
+{`import { pactMonitor } from "@q3labs/pact-monitor";
 
 const pact = pactMonitor({
   apiKey: process.env.PACT_API_KEY!,
