@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const idlPath = path.resolve(__dirname, "../idl/pact_insurance.json");
-const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
+const bundledIdl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
 
 export interface AnchorClientOptions {
   rpcUrl: string;
@@ -29,6 +29,13 @@ export function createAnchorClient(opts: AnchorClientOptions): AnchorClient {
   const wallet = new Wallet(opts.agentKeypair);
   const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
   const programId = new PublicKey(opts.programId);
+  // Anchor's Program constructor reads the program address from idl.address
+  // (translateAddress(idl.address) at construction time). Clone the bundled
+  // IDL and override its address so the caller-supplied programId wins —
+  // the IDL file is shipped as data only, and its embedded address (the
+  // current devnet deploy) must not leak to consumers pinned to this SDK
+  // version across redeploys.
+  const idl = { ...bundledIdl, address: opts.programId };
   const program = new Program(idl, provider);
   return { connection, provider, program, programId, agentKeypair: opts.agentKeypair };
 }

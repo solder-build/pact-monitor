@@ -42,7 +42,9 @@ See [`src/types.ts`](./src/types.ts) for the full type definitions and [`src/cli
 
 ## IDL
 
-The program IDL is bundled at [`idl/pact_insurance.json`](./idl/pact_insurance.json). You can import it directly if you need to build custom Anchor instructions:
+The program IDL is bundled at [`idl/pact_insurance.json`](./idl/pact_insurance.json) as **data only**. The `address` field inside that file reflects whichever deploy was current when the SDK was published (devnet today, mainnet later) and **is never used at runtime** — the SDK overrides it with the `programId` you pass to `PactInsurance`. This makes the SDK program-ID-agnostic: a consumer pinned to an older SDK version will still talk to whatever deploy you point them at via config.
+
+You can import the IDL directly if you need to build custom Anchor instructions, but you must supply your own program ID:
 
 ```ts
 import idl from "@pact-network/insurance/idl/pact_insurance.json" with { type: "json" };
@@ -53,7 +55,7 @@ import idl from "@pact-network/insurance/idl/pact_insurance.json" with { type: "
 ```ts
 new PactInsurance({
   rpcUrl: "https://api.mainnet-beta.solana.com",
-  programId: "<program-id>",
+  programId: "<program-id>",             // required — authoritative, overrides IDL
   backendUrl: "https://pactnetwork.io",  // optional, for claim signing
   apiKey: "...",                         // optional
 });

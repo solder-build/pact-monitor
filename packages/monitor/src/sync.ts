@@ -83,6 +83,7 @@ export class PactSync {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      "User-Agent": "pact-monitor-sdk/0.1.0",
       Authorization: `Bearer ${this.apiKey}`,
     };
 

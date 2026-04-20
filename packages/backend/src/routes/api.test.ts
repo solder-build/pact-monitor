@@ -539,6 +539,123 @@ describe("API integration tests", () => {
     });
   });
 
+  describe("POST /api/v1/admin/delete-by-prefix", () => {
+    const ADMIN_TOKEN = `admin-${randomUUID()}`;
+    let adminApp: Awaited<ReturnType<typeof Fastify>>;
+    let savedAdminToken: string | undefined;
+
+    before(async () => {
+      savedAdminToken = process.env.ADMIN_TOKEN;
+      process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+      const { adminRoutes } = await import("./admin.js");
+      adminApp = Fastify();
+      await adminApp.register(adminRoutes);
+    });
+
+    after(async () => {
+      await adminApp.close();
+      if (savedAdminToken === undefined) delete process.env.ADMIN_TOKEN;
+      else process.env.ADMIN_TOKEN = savedAdminToken;
+    });
+
+    it("returns 401 without admin token", async () => {
+      const res = await adminApp.inject({
+        method: "POST",
+        url: "/api/v1/admin/delete-by-prefix?hostname_prefix=demo-",
+      });
+      assert.equal(res.statusCode, 401);
+    });
+
+    it("returns 400 when prefix is too short", async () => {
+      const res = await adminApp.inject({
+        method: "POST",
+        url: "/api/v1/admin/delete-by-prefix?hostname_prefix=a-",
+        headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+      });
+      assert.equal(res.statusCode, 400);
+    });
+
+    it("returns 400 when prefix does not end with '-'", async () => {
+      const res = await adminApp.inject({
+        method: "POST",
+        url: "/api/v1/admin/delete-by-prefix?hostname_prefix=demo",
+        headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+      });
+      assert.equal(res.statusCode, 400);
+    });
+
+    it("returns 400 when prefix is missing", async () => {
+      const res = await adminApp.inject({
+        method: "POST",
+        url: "/api/v1/admin/delete-by-prefix",
+        headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+      });
+      assert.equal(res.statusCode, 400);
+    });
+
+    it("deletes matching providers and their records, leaves others alone", async () => {
+      const uniquePrefix = `admtest-${randomUUID().slice(0, 8)}-`;
+      const matchingHostname = `${uniquePrefix}one.example.com`;
+      const otherHostname = `unrelated-${randomUUID().slice(0, 8)}.example.com`;
+
+      const matched = await query<{ id: string }>(
+        "INSERT INTO providers (name, base_url) VALUES ($1, $1) RETURNING id",
+        [matchingHostname],
+      );
+      const other = await query<{ id: string }>(
+        "INSERT INTO providers (name, base_url) VALUES ($1, $1) RETURNING id",
+        [otherHostname],
+      );
+      const matchedId = matched.rows[0]!.id;
+      const otherId = other.rows[0]!.id;
+
+      await query(
+        "INSERT INTO call_records (provider_id, endpoint, timestamp, status_code, latency_ms, classification) VALUES ($1, '/x', NOW(), 500, 100, 'error')",
+        [matchedId],
+      );
+      await query(
+        "INSERT INTO call_records (provider_id, endpoint, timestamp, status_code, latency_ms, classification) VALUES ($1, '/x', NOW(), 200, 50, 'success')",
+        [otherId],
+      );
+
+      const res = await adminApp.inject({
+        method: "POST",
+        url: `/api/v1/admin/delete-by-prefix?hostname_prefix=${uniquePrefix}`,
+        headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.equal(body.deleted_providers, 1);
+      assert.equal(body.deleted_records, 1);
+
+      const remaining = await getOne<{ count: string }>(
+        "SELECT COUNT(*)::text AS count FROM providers WHERE id = $1",
+        [matchedId],
+      );
+      assert.equal(remaining?.count, "0");
+      const unrelated = await getOne<{ count: string }>(
+        "SELECT COUNT(*)::text AS count FROM providers WHERE id = $1",
+        [otherId],
+      );
+      assert.equal(unrelated?.count, "1");
+
+      await query("DELETE FROM call_records WHERE provider_id = $1", [otherId]);
+      await query("DELETE FROM providers WHERE id = $1", [otherId]);
+    });
+
+    it("returns zeros when no providers match the prefix", async () => {
+      const res = await adminApp.inject({
+        method: "POST",
+        url: `/api/v1/admin/delete-by-prefix?hostname_prefix=nomatch-${randomUUID().slice(0, 8)}-`,
+        headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      assert.equal(body.deleted_providers, 0);
+      assert.equal(body.deleted_records, 0);
+    });
+  });
+
   // Step 2.1 — oracle keypair module-scope cache
   test("oracle keypair cache returns same object reference across N calls (file path)", async () => {
     // ESM module exports are read-only — we cannot monkey-patch fs.readFileSync.

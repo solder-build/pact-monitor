@@ -46,4 +46,5 @@ export interface FetchOptions extends RequestInit {
 export interface PactFetchOptions {
   expectedSchema?: ExpectedSchema;
   usdcAmount?: number;
+  provider?: string;
 }

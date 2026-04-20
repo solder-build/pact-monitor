@@ -67,6 +67,41 @@ describe("PactMonitor events", () => {
     assert.equal(fired, false);
   });
 
+  it("pactOptions.provider overrides hostname-based provider id on success", async () => {
+    globalThis.fetch = async () =>
+      new Response('{"ok":true}', { status: 200 }) as any;
+
+    await monitor.fetch(
+      "http://127.0.0.1:3010/_chaos/helius",
+      undefined,
+      { provider: "demo-helius" },
+    );
+
+    const records = monitor.getRecords();
+    assert.equal(records.length, 1);
+    assert.equal(records[0]!.hostname, "demo-helius");
+  });
+
+  it("pactOptions.provider overrides hostname-based provider id on network error", async () => {
+    globalThis.fetch = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+
+    await assert.rejects(
+      () =>
+        monitor.fetch(
+          "http://127.0.0.1:3010/_chaos/helius",
+          undefined,
+          { provider: "demo-helius" },
+        ),
+      /ECONNREFUSED/,
+    );
+
+    const records = monitor.getRecords();
+    assert.equal(records.length, 1);
+    assert.equal(records[0]!.hostname, "demo-helius");
+  });
+
   it("emits 'failure' on network error and still rethrows", async () => {
     globalThis.fetch = async () => {
       throw new Error("ECONNREFUSED");

@@ -2,6 +2,24 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Keypair } from "@solana/web3.js";
 import { PactInsurance } from "./client.js";
+import { createAnchorClient } from "./anchor-client.js";
+
+describe("createAnchorClient programId override", () => {
+  it("uses opts.programId rather than the address embedded in the bundled IDL", () => {
+    // A valid base58 pubkey that differs from the IDL's embedded devnet
+    // address (2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3). If the IDL's
+    // address leaks through, program.programId will NOT match this value.
+    const overrideId = "4Z1Y3W49U2Cn6bz9UpkahVP7LaeobQ4cAaEt3uNaqSob";
+    const kp = Keypair.generate();
+    const client = createAnchorClient({
+      rpcUrl: "http://127.0.0.1:8899",
+      programId: overrideId,
+      agentKeypair: kp,
+    });
+    assert.equal(client.programId.toBase58(), overrideId);
+    assert.equal(client.program.programId.toBase58(), overrideId);
+  });
+});
 
 describe("PactInsurance.submitClaim", () => {
   it("sends Authorization: Bearer header when apiKey is configured", async () => {

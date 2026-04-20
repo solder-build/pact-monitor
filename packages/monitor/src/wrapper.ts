@@ -59,7 +59,7 @@ export class PactMonitor {
   ): Promise<Response> {
     const urlStr = url.toString();
     const parsed = new URL(urlStr);
-    const hostname = parsed.hostname;
+    const hostname = pactOptions?.provider ?? parsed.hostname;
     const endpoint = parsed.pathname;
 
     const start = Date.now();

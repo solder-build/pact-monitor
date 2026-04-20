@@ -1,17 +1,16 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { randomBytes } from "crypto";
-import { getOne, getMany, query } from "../db.js";
+import { getOne, getMany, query, pool } from "../db.js";
 import { hashKey } from "../middleware/auth.js";
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
-
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  if (!ADMIN_TOKEN) {
+  const adminToken = process.env.ADMIN_TOKEN || "";
+  if (!adminToken) {
     reply.code(503).send({ error: "Admin not configured" });
     return;
   }
   const header = request.headers.authorization;
-  if (header !== `Bearer ${ADMIN_TOKEN}`) {
+  if (header !== `Bearer ${adminToken}`) {
     reply.code(401).send({ error: "Invalid admin token" });
     return;
   }
@@ -353,4 +352,56 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
     return reply.send({ ok: true, status });
   });
+
+  // Narrow destructive delete for demo-data cleanup. Requires hostname_prefix
+  // length >= 3 AND a trailing '-' so a short/empty value can't wipe the
+  // whole providers table by accident. Used by the demo-runner's /reset.
+  app.post<{ Querystring: { hostname_prefix?: string } }>(
+    "/api/v1/admin/delete-by-prefix",
+    async (request, reply) => {
+      const prefix = request.query.hostname_prefix;
+      if (!prefix || prefix.length < 3 || !prefix.endsWith("-")) {
+        return reply.code(400).send({
+          error: "hostname_prefix must be >= 3 chars and end with '-'",
+        });
+      }
+      const likePattern = `${prefix}%`;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const provIds = await client.query<{ id: string }>(
+          "SELECT id FROM providers WHERE base_url LIKE $1",
+          [likePattern],
+        );
+        if (provIds.rows.length === 0) {
+          await client.query("COMMIT");
+          return { deleted_providers: 0, deleted_records: 0, deleted_claims: 0 };
+        }
+        const ids = provIds.rows.map((r) => r.id);
+        const claimsResult = await client.query(
+          "DELETE FROM claims WHERE provider_id = ANY($1::uuid[])",
+          [ids],
+        );
+        const recordsResult = await client.query(
+          "DELETE FROM call_records WHERE provider_id = ANY($1::uuid[])",
+          [ids],
+        );
+        const providersResult = await client.query(
+          "DELETE FROM providers WHERE id = ANY($1::uuid[])",
+          [ids],
+        );
+        await client.query("COMMIT");
+        return {
+          deleted_providers: providersResult.rowCount ?? 0,
+          deleted_records: recordsResult.rowCount ?? 0,
+          deleted_claims: claimsResult.rowCount ?? 0,
+        };
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+  );
 }
