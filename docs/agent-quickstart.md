@@ -38,7 +38,7 @@ The script:
 1. Loads or generates a demo agent keypair at `~/.config/solana/pact-demo-agent.json`.
 2. Funds it with SOL and TEST-USDC from your Phantom deployer wallet (used as the mint authority).
 3. Calls `enable_insurance` to create a policy on the target pool.
-4. Runs 5 successful calls to the provider through `@pact-network/monitor`, tagging each record with the agent's on-chain pubkey.
+4. Runs 5 successful calls to the provider through `@q3labs/pact-monitor`, tagging each record with the agent's on-chain pubkey.
 5. Runs 1 deliberate failure (a 404 endpoint) — classified as `error`.
 6. Prints pool balance deltas and Solana Explorer links.
 
@@ -49,7 +49,7 @@ Watch for the "submit_claim" step after the failed call — that's the backend o
 ## 3. Use the SDK in your own code
 
 ```ts
-import { pactMonitor } from "@pact-network/monitor";
+import { pactMonitor } from "@q3labs/pact-monitor";
 
 const pact = pactMonitor({
   apiKey: process.env.PACT_API_KEY!,       // issued via the admin CLI

@@ -9,8 +9,8 @@
     "insured-agent": "tsx insured-agent.ts"
   },
   "dependencies": {
-    "@pact-network/monitor": "workspace:*",
-    "@pact-network/insurance": "workspace:*",
+    "@q3labs/pact-monitor": "workspace:*",
+    "@q3labs/pact-insurance": "workspace:*",
     "@anchor-lang/core": "^1.0.0",
     "@solana/web3.js": "^1.98.4",
     "@solana/spl-token": "^0.4.14",

@@ -14,8 +14,8 @@ them when this directory lives at `.claude/skills/pact-network/`.
 | Sub-skill | Purpose |
 |---|---|
 | `pact-network-guide` | Overview, decision tree (which SDK), golden rule, troubleshooting |
-| `pact-monitor` | `@pact-network/monitor` — wrap `fetch()`, sync signed batches, events |
-| `pact-insurance` | `@pact-network/insurance` — on-chain policy, estimate, claims |
+| `pact-monitor` | `@q3labs/pact-monitor` — wrap `fetch()`, sync signed batches, events |
+| `pact-insurance` | `@q3labs/pact-insurance` — on-chain policy, estimate, claims |
 | `pact-integration` | Wire both SDKs together + Anthropic / Fastify / Express / Next.js patterns |
 
 ## Install

@@ -1,4 +1,4 @@
-# @pact-network/insurance
+# @q3labs/pact-insurance
 
 TypeScript SDK for [Pact Network](https://pactnetwork.io)'s on-chain parametric insurance program on Solana. Enable coverage for an agent against a specific API provider, top up USDC delegations, query pool state, and submit claims when the provider fails.
 
@@ -7,13 +7,13 @@ Pact Network monitors API provider reliability in real time, computes actuariall
 ## Install
 
 ```bash
-npm install @pact-network/insurance
+npm install @q3labs/pact-insurance
 ```
 
 ## Quick start
 
 ```ts
-import { PactInsurance } from "@pact-network/insurance";
+import { PactInsurance } from "@q3labs/pact-insurance";
 import { Keypair } from "@solana/web3.js";
 
 const insurance = new PactInsurance({
@@ -47,7 +47,7 @@ The program IDL is bundled at [`idl/pact_insurance.json`](./idl/pact_insurance.j
 You can import the IDL directly if you need to build custom Anchor instructions, but you must supply your own program ID:
 
 ```ts
-import idl from "@pact-network/insurance/idl/pact_insurance.json" with { type: "json" };
+import idl from "@q3labs/pact-insurance/idl/pact_insurance.json" with { type: "json" };
 ```
 
 ## Configuration

@@ -29,8 +29,8 @@ The whole thing is parametric: the trigger and refund math are deterministic, no
 flowchart TB
   subgraph Agent["Agent (the AI app)"]
     A1[Wallet w/ USDC]
-    A2["@pact-network/monitor (wraps fetch)"]
-    A3["@pact-network/insurance (Solana client)"]
+    A2["@q3labs/pact-monitor (wraps fetch)"]
+    A3["@q3labs/pact-insurance (Solana client)"]
   end
 
   subgraph Provider["Real API"]
@@ -87,7 +87,7 @@ flowchart TB
 ## The 4 actors
 
 ### 1. Agents (you, the AI app developer)
-Use `@pact-network/monitor` to wrap your `fetch()` calls so failures get classified, and `@pact-network/insurance` to enable insurance for a specific provider. When you `enableInsurance`, the SDK submits a single transaction containing two instructions: an `spl_token::approve` granting the pool PDA delegate authority over your USDC ATA, and the program's `enable_insurance` instruction creating a `Policy` PDA. Your USDC stays in your wallet — the protocol just has permission to pull from it on demand.
+Use `@q3labs/pact-monitor` to wrap your `fetch()` calls so failures get classified, and `@q3labs/pact-insurance` to enable insurance for a specific provider. When you `enableInsurance`, the SDK submits a single transaction containing two instructions: an `spl_token::approve` granting the pool PDA delegate authority over your USDC ATA, and the program's `enable_insurance` instruction creating a `Policy` PDA. Your USDC stays in your wallet — the protocol just has permission to pull from it on demand.
 
 ### 2. Underwriters (LPs)
 Deposit USDC into a `CoveragePool` for a specific provider. You become the bank: you earn premiums when calls succeed, and you absorb losses when claims pay out. There's a withdrawal cooldown (default 7 days) so you can't run on the bank when a failure storm hits.

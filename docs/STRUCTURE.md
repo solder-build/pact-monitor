@@ -13,8 +13,8 @@ pact-network/
 ├── packages/
 │   ├── program/              Anchor program (Rust, on-chain)
 │   ├── backend/              Fastify API + Postgres + Solana crank (Node.js)
-│   ├── sdk/                  @pact-network/monitor — fetch wrapper for agents
-│   ├── insurance/            @pact-network/insurance — agent-side Solana client
+│   ├── sdk/                  @q3labs/pact-monitor — fetch wrapper for agents
+│   ├── insurance/            @q3labs/pact-insurance — agent-side Solana client
 │   └── scorecard/            Vite + React + Tailwind dashboard
 │
 ├── docs/
@@ -157,7 +157,7 @@ backend/
 
 ---
 
-## `packages/monitor/` — `@pact-network/monitor`
+## `packages/monitor/` — `@q3labs/pact-monitor`
 
 Drop-in `fetch()` wrapper for AI agent apps. Records call metadata, syncs to backend.
 
@@ -182,7 +182,7 @@ sdk/
 
 ---
 
-## `packages/insurance/` — `@pact-network/insurance` (NEW in Phase 3)
+## `packages/insurance/` — `@q3labs/pact-insurance` (NEW in Phase 3)
 
 Agent-side Solana client. Builds the `enable_insurance` transaction with SPL approve baked in. Wraps Policy / pool / claim queries.
 

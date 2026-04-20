@@ -1,6 +1,6 @@
 // Pact Insurance — Minimal On-Chain Integration
 // Enable a parametric insurance policy, estimate per-call premium, read
-// policy state. Pairs with @pact-network/monitor but stands alone here.
+// policy state. Pairs with @q3labs/pact-monitor but stands alone here.
 //
 // Run: pnpm --filter @pact-network/sample-demo exec tsx insurance-basic.ts <provider-hostname>
 //
@@ -14,7 +14,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Keypair } from "@solana/web3.js";
-import { PactInsurance } from "@pact-network/insurance";
+import { PactInsurance } from "@q3labs/pact-insurance";
 
 const HOSTNAME = process.argv[2] || "api.coingecko.com";
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";

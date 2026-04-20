@@ -1,4 +1,4 @@
-# @pact-network/monitor
+# @q3labs/pact-monitor
 
 TypeScript SDK that wraps `fetch()` to monitor AI agent API reliability and sync call records to the [Pact Network](https://pactnetwork.io) scorecard.
 
@@ -7,13 +7,13 @@ Pact Network is a parametric micro-insurance system for AI agent API payments on
 ## Install
 
 ```bash
-npm install @pact-network/monitor
+npm install @q3labs/pact-monitor
 ```
 
 ## Quick start
 
 ```ts
-import { pactMonitor } from "@pact-network/monitor";
+import { pactMonitor } from "@q3labs/pact-monitor";
 
 const monitor = pactMonitor({
   apiKey: process.env.PACT_API_KEY,

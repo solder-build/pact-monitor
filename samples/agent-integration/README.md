@@ -1,6 +1,6 @@
 # Pact Monitor — Agent Integration Examples
 
-Copy-paste examples for the `@pact-network/monitor` SDK (no Solana deps).
+Copy-paste examples for the `@q3labs/pact-monitor` SDK (no Solana deps).
 For insurance-SDK examples (on-chain policy + claims), see `samples/demo/`.
 
 ## Prerequisites

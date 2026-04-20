@@ -1,4 +1,4 @@
-name: Publish @pact-network/insurance
+name: Publish @q3labs/pact-insurance
 
 on:
   push:
@@ -34,10 +34,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Test
-        run: pnpm --filter @pact-network/insurance test
+        run: pnpm --filter @q3labs/pact-insurance test
 
       - name: Build
-        run: pnpm --filter @pact-network/insurance build
+        run: pnpm --filter @q3labs/pact-insurance build
 
       - name: Check if version already published
         id: check
