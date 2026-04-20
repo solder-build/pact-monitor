@@ -2,6 +2,11 @@
   "name": "@q3labs/pact-insurance",
   "version": "0.1.4",
   "description": "TypeScript SDK for Pact Network's on-chain parametric insurance program on Solana — enable insurance, top up delegations, submit claims, and query pool state.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solder-build/pact-monitor.git",
+    "directory": "packages/insurance"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
