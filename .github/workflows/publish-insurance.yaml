@@ -87,6 +87,8 @@ jobs:
         run: |
           set -euo pipefail
           TAG="insurance-v${VERSION}"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           git tag -a "$TAG" -m "$NAME@$VERSION"
           git push origin "$TAG"
           gh release create "$TAG" \
