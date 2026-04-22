@@ -17,13 +17,15 @@ pinocchio = "0.10"
 bytemuck = { version = "1.14", features = ["derive"] }
 
 # SBF target: PDA derivation resolves to a syscall; no extra feature needed.
+# `copy` is required so `Address` implements `Copy` (WP-3 state structs
+# need `#[derive(Copy)]` for bytemuck::Pod).
 [target.'cfg(any(target_os = "solana", target_arch = "bpf"))'.dependencies]
-solana-address = { version = "2", features = ["decode"] }
+solana-address = { version = "2", features = ["decode", "copy"] }
 
 # Host target: `solana_address::Address::find_program_address` is gated on
 # the `curve25519` feature for non-SBF builds (`cargo test`, `cargo check`).
 [target.'cfg(not(any(target_os = "solana", target_arch = "bpf")))'.dependencies]
-solana-address = { version = "2", features = ["decode", "curve25519"] }
+solana-address = { version = "2", features = ["decode", "curve25519", "copy"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

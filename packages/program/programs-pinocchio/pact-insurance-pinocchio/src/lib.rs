@@ -5,6 +5,7 @@ pub mod discriminator;
 pub mod entrypoint;
 pub mod error;
 pub mod pda;
+pub mod state;
 
 #[cfg(feature = "bpf-entrypoint")]
 pinocchio::entrypoint!(entrypoint::process_instruction);
