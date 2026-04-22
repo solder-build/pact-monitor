@@ -45,6 +45,13 @@ WP-1 landed at commit `2524cae` (SBF size 5.4 KiB vs Anchor's 461 KiB). Five dev
 8. **Policy PDA seed truth.** Anchor's `enable_insurance.rs` uses `agent.key().as_ref()` — i.e., the agent signer's 32-byte Pubkey, NOT a hashed `agent_id` string. Recon spec's "agent_id bytes" wording was ambiguous; follow Anchor source. Same principle applies to every other "what is this seed?" question: **Anchor source trumps spec paraphrasing.**
 9. **Claim PDA seed = `[b"claim", policy.as_ref(), sha256(call_id)]`** — caller pre-hashes the `call_id` to 32 bytes. Pool seed is `[b"pool", hostname_bytes]` where `hostname_bytes` is a `&[u8]` slice into the fixed `[u8; 64]` (trimmed at the `\0` terminator to match `String::as_bytes()` length in Anchor).
 
+### Addendum from WP-5 (Apr 22, 2026)
+
+10. **CreateAccount CPI is hand-rolled** at `src/system.rs`. No `pinocchio-system` dep added (version conflict with pinocchio 0.10 per #2). The encoder writes a 53-byte System Program payload (u32 discriminant + u64 lamports + u64 space + 32-byte owner). Stable across System Program versions. WP-8 (`create_pool`) revisits when SPL-Token init also needed.
+11. **IDL is hand-written**, not Shank-generated. `packages/program/idl/pact_insurance.json` — WP-5 added instruction 0; each subsequent WP extends the same file (add to `instructions[]`, accounts tables, types). Spec §10 allows this fallback. Cheaper than fighting Shank/Pinocchio-0.10 compat.
+12. **"Codama regen" is manual through WP-15.** `packages/insurance/scripts/codama-generate.mjs` is a stub with `USE_CODAMA = false`. TS client files under `packages/insurance/src/generated/` are HAND-WRITTEN in Codama-style layout (matching `@codama/renderers-js` output). Every WP-6..WP-15 crew: **hand-write** the instruction builder + account decoder + types under the same directory structure. WP-17 flips `USE_CODAMA = true`, runs real Codama against the complete IDL, and reconciles any drift (should be minimal if layout mirrored carefully).
+13. **Test harness split.** Pinocchio-targeting TS tests live under `packages/program/tests-pinocchio/` (new dir, own `tsconfig.json`) and spawn `solana-test-validator` pre-loaded with `pact_insurance_pinocchio.so`. The Anchor test suite at `tests/` is untouched until WP-17. Each instruction WP moves its own tests from `tests/` to `tests-pinocchio/`.
+
 ---
 
 ## Section A — Work Packages
