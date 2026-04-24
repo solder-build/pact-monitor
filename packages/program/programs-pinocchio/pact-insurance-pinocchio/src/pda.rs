@@ -78,6 +78,41 @@ pub fn derive_vault(pool: &Address) -> (Address, u8) {
     Address::find_program_address(&seeds, &ID)
 }
 
+// ---- Signer-seed builders (PDA-signed CPIs) -------------------------------
+//
+// These helpers return `[&[u8]; 3]` slices pointing into caller-owned stack
+// storage — the `hostname_bytes`, `pool_bytes`, and `bump` byte array must
+// outlive the returned seeds. Intended use: WP-10 (`withdraw`), WP-12
+// (`enable_insurance`), WP-14 (`settle_premium`), WP-15 (`submit_claim`) —
+// each builds stack locals, calls this, then wraps in `Seed`/`Signer` for
+// `invoke_signed`. Spec §8.8 footgun: do NOT feed `.to_vec()` into these.
+
+/// Stack-friendly pool PDA signer seed slices:
+/// `[b"pool", hostname_bytes, &[pool_bump]]`. The caller must keep
+/// `hostname_bytes` and the one-byte `bump_slice` alive until
+/// `invoke_signed` returns.
+#[inline]
+pub fn pool_signer_seeds<'a>(
+    hostname_bytes: &'a [u8],
+    bump_slice: &'a [u8],
+) -> [&'a [u8]; 3] {
+    [POOL_SEED_PREFIX, hostname_bytes, bump_slice]
+}
+
+/// Stack-friendly vault PDA signer seed slices:
+/// `[b"vault", pool_bytes, &[vault_bump]]`. Reserved for WPs that have the
+/// pool authority sign vault-address-derivation — currently unused (every
+/// Transfer out of the vault uses the pool PDA via `pool_signer_seeds`, not
+/// the vault PDA). Kept alongside `pool_signer_seeds` so the companion
+/// pattern is one `use` away when WP-17's cut-over lands.
+#[inline]
+pub fn vault_signer_seeds<'a>(
+    pool_bytes: &'a [u8],
+    bump_slice: &'a [u8],
+) -> [&'a [u8]; 3] {
+    [VAULT_SEED_PREFIX, pool_bytes, bump_slice]
+}
+
 // ---- Underwriter position ---------------------------------------------------
 
 #[inline]

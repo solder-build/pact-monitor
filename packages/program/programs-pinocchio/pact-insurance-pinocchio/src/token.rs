@@ -14,7 +14,7 @@
 
 use pinocchio::{
     account::AccountView,
-    cpi::invoke,
+    cpi::{invoke, invoke_signed, Seed, Signer},
     instruction::{InstructionAccount, InstructionView},
     ProgramResult,
 };
@@ -113,4 +113,41 @@ pub fn transfer_user_signed(
     };
 
     invoke::<3>(&instruction, &[source, destination, authority])
+}
+
+/// CPI into SPL-Token `Transfer`, PDA-authority variant.
+///
+/// Identical on-wire encoding as [`transfer_user_signed`] (disc byte 3 + u64
+/// LE amount) — only the CPI-invocation flavour differs. Used by WP-10
+/// `withdraw` (and WP-14 / WP-15 in the future) where the pool PDA is the
+/// token-account authority. `signer_seeds` must be the stack-local seed slice
+/// that derives `authority.address()` from `crate::ID`; spec §8.8 footgun
+/// about borrow lifetimes applies — build the `[Seed; N]` in the caller's
+/// handler scope, not from `.to_vec()`.
+#[inline]
+pub fn transfer_pool_signed(
+    source: &AccountView,
+    destination: &AccountView,
+    authority: &AccountView,
+    amount: u64,
+    signer_seeds: &[Seed],
+) -> ProgramResult {
+    let mut data = [0u8; TRANSFER_DATA_LEN];
+    data[0] = TRANSFER_DISC;
+    data[1..9].copy_from_slice(&amount.to_le_bytes());
+
+    let accounts = [
+        InstructionAccount::new(source.address(), true, false),
+        InstructionAccount::new(destination.address(), true, false),
+        InstructionAccount::new(authority.address(), false, true),
+    ];
+
+    let instruction = InstructionView {
+        program_id: &SPL_TOKEN_PROGRAM_ID,
+        accounts: &accounts,
+        data: &data,
+    };
+
+    let signer = Signer::from(signer_seeds);
+    invoke_signed::<3>(&instruction, &[source, destination, authority], &[signer])
 }

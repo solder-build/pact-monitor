@@ -1,14 +1,20 @@
-// WP-9 migration target: the 4 deposit tests from `tests/underwriter.ts`.
+// WP-9 / WP-10 migration target: deposit + withdraw tests from `tests/underwriter.ts`.
 //
 // Tests:
 //   1. creates new position on first deposit
 //   2. re-opens existing position on second deposit (counters preserved)
 //   3. cooldown timestamp resets on every deposit
 //   4. rejects deposit with zero amount (ZeroAmount = 6020)
+//   5. (WP-10) rejects withdraw before cooldown elapsed (WithdrawalUnderCooldown = 6009)
+//   6. (WP-10) happy-path withdraw — skipped by default behind PACT_WP10_SLOW_TEST
+//      because ABSOLUTE_MIN_WITHDRAWAL_COOLDOWN is 1h and test-validator has no
+//      runtime clock-advance syscall. When the env var is set the test waits
+//      the full 3600s; without it, the test is documented-skipped.
 //
 // Runs against `solana-test-validator` pre-loaded with the Pinocchio `.so`.
 // Run with:
 //   pnpm tsx tests-pinocchio/underwriter.ts
+//   PACT_WP10_SLOW_TEST=1 pnpm tsx tests-pinocchio/underwriter.ts   # full 1h wait
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -52,6 +58,7 @@ import {
   getInitializeProtocolInstruction,
   getCreatePoolInstruction,
   getDepositInstruction,
+  getWithdrawInstruction,
   findProtocolConfigPda,
   findCoveragePoolPda,
   findCoveragePoolVaultPda,
@@ -514,6 +521,152 @@ async function run() {
           );
         }
         assert(threw, 'zero-amount deposit must reject');
+      },
+      counter,
+    );
+
+    // ---- WP-10 Test 5 — rejects withdraw before cooldown elapsed ---------
+    //
+    // `ABSOLUTE_MIN_WITHDRAWAL_COOLDOWN` clamps the effective cooldown to
+    // 3600s even if `config.withdrawal_cooldown_seconds` is lower. Immediately
+    // after the re-open deposit above, `elapsed << 3600` → reject with 6009.
+    await runCase(
+      'WP-10: rejects withdraw before cooldown elapsed (6009)',
+      async () => {
+        const expectedCode = 6009;
+        const hex = expectedCode.toString(16);
+        const pattern = new RegExp(`#${expectedCode}\\b|0x${hex}\\b`, 'i');
+        let threw = false;
+        try {
+          await sendTx(
+            h,
+            underwriterSigner,
+            getWithdrawInstruction({
+              config: protocolPda,
+              pool: poolPda,
+              vault: vaultPda,
+              position: positionPda,
+              underwriterTokenAccount: underwriterAta,
+              underwriter: underwriterSigner,
+              amount: 10_000_000n, // 10 USDC; well under deposited balance
+            }),
+          );
+        } catch (err) {
+          threw = true;
+          const detail = JSON.stringify(err, Object.getOwnPropertyNames(err));
+          assert.match(
+            detail,
+            pattern,
+            `expected WithdrawalUnderCooldown (${expectedCode}/0x${hex}), got: ${detail}`,
+          );
+        }
+        assert(threw, 'withdraw must reject before cooldown elapses');
+      },
+      counter,
+    );
+
+    // ---- WP-10 Test 6 — happy-path withdraw (opt-in slow) ----------------
+    //
+    // The handler's cooldown floor is `max(cfg, ABSOLUTE_MIN_WITHDRAWAL_COOLDOWN)`
+    // = max(cfg, 3600s). `solana-test-validator` has no runtime clock-advance
+    // mechanism (`--warp-slot` is boot-only), and there's no RPC to write
+    // arbitrary `position.deposit_timestamp` bytes mid-test. So a true happy-
+    // path test has to wait the real 3600 seconds.
+    //
+    // Behind `PACT_WP10_SLOW_TEST=1` we do exactly that. Otherwise we document-
+    // skip and record the skip as a pass (so CI stays green while the full
+    // test remains available for manual/devnet validation).
+    await runCase(
+      'WP-10: happy-path withdraw (requires PACT_WP10_SLOW_TEST=1 — 1h wait)',
+      async () => {
+        if (!process.env.PACT_WP10_SLOW_TEST) {
+          console.log(
+            '  [wp10] skip: set PACT_WP10_SLOW_TEST=1 to wait 3600s and run the happy path',
+          );
+          return;
+        }
+
+        const WAIT_SECS = 3600 + 30; // 30s cushion over ABSOLUTE_MIN
+        console.log(`  [wp10] waiting ${WAIT_SECS}s for cooldown to elapse...`);
+        await new Promise((r) => setTimeout(r, WAIT_SECS * 1000));
+
+        // Snapshot pre-withdraw state.
+        const prePoolRaw = await fetchAccountData(h, poolPda);
+        assert(prePoolRaw);
+        const prePool = decodeCoveragePool(prePoolRaw);
+        const prePosRaw = await fetchAccountData(h, positionPda);
+        assert(prePosRaw);
+        const prePos = decodeUnderwriterPosition(prePosRaw);
+
+        const preVault = await getAccount(
+          usdcFixture.connection,
+          new PublicKey(vaultPda),
+        );
+        const preUwTa = await getAccount(
+          usdcFixture.connection,
+          new PublicKey(underwriterAta),
+        );
+
+        const withdrawAmount = 25_000_000n; // 25 USDC
+        await sendTx(
+          h,
+          underwriterSigner,
+          getWithdrawInstruction({
+            config: protocolPda,
+            pool: poolPda,
+            vault: vaultPda,
+            position: positionPda,
+            underwriterTokenAccount: underwriterAta,
+            underwriter: underwriterSigner,
+            amount: withdrawAmount,
+          }),
+        );
+
+        // Post-state: counters decremented; vault/uw balances shifted.
+        const postPoolRaw = await fetchAccountData(h, poolPda);
+        assert(postPoolRaw);
+        const postPool = decodeCoveragePool(postPoolRaw);
+        const postPosRaw = await fetchAccountData(h, positionPda);
+        assert(postPosRaw);
+        const postPos = decodeUnderwriterPosition(postPosRaw);
+
+        assert.equal(
+          postPool.totalDeposited,
+          prePool.totalDeposited - withdrawAmount,
+          'pool.total_deposited decremented',
+        );
+        assert.equal(
+          postPool.totalAvailable,
+          prePool.totalAvailable - withdrawAmount,
+          'pool.total_available decremented',
+        );
+        assert.equal(
+          postPos.deposited,
+          prePos.deposited - withdrawAmount,
+          'position.deposited decremented',
+        );
+        // Unrelated counters must be preserved by withdraw.
+        assert.equal(postPos.earnedPremiums, prePos.earnedPremiums);
+        assert.equal(postPos.lossesAbsorbed, prePos.lossesAbsorbed);
+
+        const postVault = await getAccount(
+          usdcFixture.connection,
+          new PublicKey(vaultPda),
+        );
+        const postUwTa = await getAccount(
+          usdcFixture.connection,
+          new PublicKey(underwriterAta),
+        );
+        assert.equal(
+          postVault.amount,
+          preVault.amount - withdrawAmount,
+          'vault token amount decreased by withdraw',
+        );
+        assert.equal(
+          postUwTa.amount,
+          preUwTa.amount + withdrawAmount,
+          'underwriter token amount increased by withdraw',
+        );
       },
       counter,
     );

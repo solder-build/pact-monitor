@@ -19,10 +19,10 @@ pub fn process_instruction(
         Discriminator::UpdateOracle => instructions::update_oracle::process(accounts, rest),
         Discriminator::CreatePool => instructions::create_pool::process(accounts, rest),
         Discriminator::Deposit => instructions::deposit::process(accounts, rest),
+        Discriminator::Withdraw => instructions::withdraw::process(accounts, rest),
         Discriminator::EnableInsurance
         | Discriminator::DisablePolicy
         | Discriminator::SettlePremium
-        | Discriminator::Withdraw
         | Discriminator::UpdateRates
         | Discriminator::SubmitClaim => Err(ProgramError::Custom(u32::MAX)),
     }
