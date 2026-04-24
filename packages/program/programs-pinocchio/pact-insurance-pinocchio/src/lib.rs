@@ -14,7 +14,7 @@ pub mod token_account;
 #[cfg(feature = "bpf-entrypoint")]
 pinocchio::entrypoint!(entrypoint::process_instruction);
 
-solana_address::declare_id!("2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3");
+solana_address::declare_id!("7i9zJMwaTRw4Tdy7SAfXJdDkYQD39xyKmkBhWuUSgDJU");
 
 /// Hard-coded deployer pubkey enforced when the `enforce-deployer` feature is
 /// ON. Mirrors the Anchor crate's `DEPLOYER_PUBKEY` so the two builds agree on

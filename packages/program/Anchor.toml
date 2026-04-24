@@ -6,9 +6,11 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
+pact_insurance_pinocchio = "7i9zJMwaTRw4Tdy7SAfXJdDkYQD39xyKmkBhWuUSgDJU"
 pact_insurance = "2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3"
 
 [programs.localnet]
+pact_insurance_pinocchio = "7i9zJMwaTRw4Tdy7SAfXJdDkYQD39xyKmkBhWuUSgDJU"
 pact_insurance = "2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3"
 
 [provider]

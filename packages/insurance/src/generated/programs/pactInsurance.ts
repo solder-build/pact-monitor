@@ -14,6 +14,9 @@
 import { address, type Address } from '@solana/kit';
 
 export const PACT_INSURANCE_PROGRAM_ADDRESS: Address =
+  address('7i9zJMwaTRw4Tdy7SAfXJdDkYQD39xyKmkBhWuUSgDJU');
+
+export const PACT_INSURANCE_LEGACY_ANCHOR_PROGRAM_ADDRESS: Address =
   address('2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3');
 
 export const SYSTEM_PROGRAM_ADDRESS: Address = address(
