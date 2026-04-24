@@ -403,6 +403,72 @@
         "type": "u8",
         "value": 8
       }
+    },
+    {
+      "name": "settlePremium",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only; supplies oracle / treasury / protocolFeeBps / usdcMint."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Signs all Transfer CPIs via pool_signer_seeds."]
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token vault PDA — seeds = [\"vault\", pool]. Destination of pool_cut; authority = pool."]
+        },
+        {
+          "name": "policy",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Policy PDA — seeds = [\"policy\", pool, agent]. H-05 premium-evasion guard: `active` is NOT required; only `expires_at` is enforced."]
+        },
+        {
+          "name": "treasuryAta",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token account owned by config.treasury. Mint must equal config.usdcMint. Receives protocol_fee_bps cut."]
+        },
+        {
+          "name": "agentAta",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Agent's SPL-Token account. Delegate must be the pool PDA; mint must equal pool.usdcMint. Source of every transfer."]
+        },
+        {
+          "name": "oracleSigner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Oracle signer — key must equal config.oracle. Crank-driven authority (C-02)."]
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL Token Program — `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`."]
+        }
+      ],
+      "args": [
+        {
+          "name": "callValue",
+          "type": "u64"
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 7
+      },
+      "docs": [
+        "Phase 5 F1: when policy.referrerPresent == 1, pass the referrer's USDC ATA as the first entry in remaining_accounts (position 8). Owner must equal policy.referrer; mint must equal config.usdcMint. Missing or mismatched fails LOUD with TokenAccountMismatch (6005)."
+      ]
     }
   ],
   "accounts": [

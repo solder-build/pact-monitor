@@ -23,8 +23,7 @@ pub fn process_instruction(
         Discriminator::UpdateRates => instructions::update_rates::process(accounts, rest),
         Discriminator::EnableInsurance => instructions::enable_insurance::process(accounts, rest),
         Discriminator::DisablePolicy => instructions::disable_policy::process(accounts, rest),
-        Discriminator::SettlePremium | Discriminator::SubmitClaim => {
-            Err(ProgramError::Custom(u32::MAX))
-        }
+        Discriminator::SettlePremium => instructions::settle_premium::process(accounts, rest),
+        Discriminator::SubmitClaim => Err(ProgramError::Custom(u32::MAX)),
     }
 }

@@ -14,6 +14,7 @@ export * from './instructions/withdraw.js';
 export * from './instructions/updateRates.js';
 export * from './instructions/enableInsurance.js';
 export * from './instructions/disablePolicy.js';
+export * from './instructions/settlePremium.js';
 export * from './accounts/protocolConfig.js';
 export * from './accounts/coveragePool.js';
 export * from './accounts/underwriterPosition.js';
