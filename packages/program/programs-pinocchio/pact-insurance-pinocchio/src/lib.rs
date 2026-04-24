@@ -9,6 +9,7 @@ pub mod pda;
 pub mod state;
 pub mod system;
 pub mod token;
+pub mod token_account;
 
 #[cfg(feature = "bpf-entrypoint")]
 pinocchio::entrypoint!(entrypoint::process_instruction);

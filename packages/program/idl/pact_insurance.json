@@ -261,6 +261,59 @@
       }
     },
     {
+      "name": "enableInsurance",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Writable (active_policies, updated_at)."]
+        },
+        {
+          "name": "policy",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Policy PDA — seeds = [\"policy\", pool, agent (wallet)]. Created by this instruction."]
+        },
+        {
+          "name": "agentTokenAccount",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL-Token account. mint == config.usdcMint; owner == agent; delegate == pool; delegated_amount > 0."]
+        },
+        {
+          "name": "agent",
+          "isMut": true,
+          "isSigner": true,
+          "docs": ["Agent wallet. Tx signer; pays policy PDA rent. Spec §3.6 seed rule: WALLET pubkey, not agent_token_account."]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["System Program — `11111111111111111111111111111111`."]
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": "EnableInsuranceArgs"
+          }
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 5
+      }
+    },
+    {
       "name": "withdraw",
       "accounts": [
         {
@@ -501,6 +554,19 @@
           { "name": "providerHostname", "type": "string" },
           { "name": "insuranceRateBps", "type": { "option": "u16" } },
           { "name": "maxCoveragePerCall", "type": { "option": "u64" } }
+        ]
+      }
+    },
+    {
+      "name": "EnableInsuranceArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "agentId", "type": "string" },
+          { "name": "expiresAt", "type": "i64" },
+          { "name": "referrer", "type": { "array": ["u8", 32] } },
+          { "name": "referrerPresent", "type": "u8" },
+          { "name": "referrerShareBps", "type": "u16" }
         ]
       }
     }
