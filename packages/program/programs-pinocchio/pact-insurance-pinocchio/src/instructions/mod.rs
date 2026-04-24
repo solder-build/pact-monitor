@@ -10,4 +10,5 @@ pub mod deposit;
 pub mod initialize_protocol;
 pub mod update_config;
 pub mod update_oracle;
+pub mod update_rates;
 pub mod withdraw;

@@ -20,10 +20,10 @@ pub fn process_instruction(
         Discriminator::CreatePool => instructions::create_pool::process(accounts, rest),
         Discriminator::Deposit => instructions::deposit::process(accounts, rest),
         Discriminator::Withdraw => instructions::withdraw::process(accounts, rest),
+        Discriminator::UpdateRates => instructions::update_rates::process(accounts, rest),
         Discriminator::EnableInsurance
         | Discriminator::DisablePolicy
         | Discriminator::SettlePremium
-        | Discriminator::UpdateRates
         | Discriminator::SubmitClaim => Err(ProgramError::Custom(u32::MAX)),
     }
 }

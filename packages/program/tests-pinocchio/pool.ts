@@ -44,6 +44,7 @@ import { createMint } from '@solana/spl-token';
 import {
   getInitializeProtocolInstruction,
   getCreatePoolInstruction,
+  getUpdateRatesInstruction,
   findProtocolConfigPda,
   findCoveragePoolPda,
   findCoveragePoolVaultPda,
@@ -247,7 +248,8 @@ async function run() {
     const [protocolPda] = await findProtocolConfigPda();
     const deployer = await fundedSigner(h, 20);
     const authority = await fundedSigner(h, 10);
-    const oracle = (await generateKeyPairSigner()).address;
+    const oracleSigner = await generateKeyPairSigner();
+    const oracle = oracleSigner.address;
     const treasury = (await generateKeyPairSigner()).address;
 
     // The config-bound USDC mint — create before initializeProtocol so we can
@@ -347,6 +349,162 @@ async function run() {
           poolPda,
           'vault.owner == poolPda',
         );
+      },
+      counter,
+    );
+
+    // ---- WP-11 — update_rates (disc 9) ----------------------------------
+    //
+    // Oracle-signed rate clamp. The pool created above has insuranceRateBps
+    // initialized to DEFAULT_INSURANCE_RATE_BPS (25) and minPremiumBps
+    // initialized to DEFAULT_MIN_PREMIUM_BPS (5).
+
+    // Non-oracle signer used to prove UnauthorizedOracle (6025).
+    // Funded as tx fee-payer so we can sign the outer transaction with
+    // `rando` itself and still submit it.
+    const rando = await fundedSigner(h, 1);
+
+    await runCase(
+      'WP-11: updates pool insurance_rate_bps via update_rates (oracle-signed)',
+      async () => {
+        await sendTx(
+          h,
+          authority,
+          getUpdateRatesInstruction({
+            config: protocolPda,
+            pool: poolPda,
+            oracleSigner,
+            newRateBps: 50,
+          }),
+        );
+
+        const { value: acct } = await h.rpc
+          .getAccountInfo(poolPda, { encoding: 'base64' })
+          .send();
+        assert(acct, 'pool account should exist');
+        const pool = decodeCoveragePool(
+          new Uint8Array(Buffer.from(acct.data[0], 'base64')),
+        );
+        assert.equal(pool.insuranceRateBps, 50);
+        assert.ok(pool.updatedAt > 0n, 'updated_at stamped');
+      },
+      counter,
+    );
+
+    await runCase(
+      'WP-11: rejects update_rates from non-oracle signer (UnauthorizedOracle 6025)',
+      async () => {
+        // UnauthorizedOracle = 6025 / 0x1789.
+        const expectedCode = 6025;
+        const hex = expectedCode.toString(16);
+        const pattern = new RegExp(`#${expectedCode}\\b|0x${hex}\\b`, 'i');
+
+        let threw = false;
+        try {
+          await sendTx(
+            h,
+            rando,
+            getUpdateRatesInstruction({
+              config: protocolPda,
+              pool: poolPda,
+              oracleSigner: rando,
+              newRateBps: 75,
+            }),
+          );
+        } catch (err) {
+          threw = true;
+          const detail = JSON.stringify(err, Object.getOwnPropertyNames(err));
+          assert.match(
+            detail,
+            pattern,
+            `expected UnauthorizedOracle (${expectedCode}/0x${hex}), got: ${detail}`,
+          );
+        }
+        assert(threw, 'update_rates must reject non-oracle signer');
+      },
+      counter,
+    );
+
+    await runCase(
+      'WP-11 H-04: rejects rate > 10_000 (RateOutOfBounds 6027)',
+      async () => {
+        // RateOutOfBounds = 6027 / 0x178b.
+        const expectedCode = 6027;
+        const hex = expectedCode.toString(16);
+        const pattern = new RegExp(`#${expectedCode}\\b|0x${hex}\\b`, 'i');
+
+        let threw = false;
+        try {
+          await sendTx(
+            h,
+            authority,
+            getUpdateRatesInstruction({
+              config: protocolPda,
+              pool: poolPda,
+              oracleSigner,
+              newRateBps: 10_001,
+            }),
+          );
+        } catch (err) {
+          threw = true;
+          const detail = JSON.stringify(err, Object.getOwnPropertyNames(err));
+          assert.match(
+            detail,
+            pattern,
+            `expected RateOutOfBounds (${expectedCode}/0x${hex}), got: ${detail}`,
+          );
+        }
+        assert(threw, 'update_rates must reject rate > 10_000');
+      },
+      counter,
+    );
+
+    await runCase(
+      'WP-11 H-04: rejects rate < pool.min_premium_bps (RateBelowFloor 6028)',
+      async () => {
+        // Fetch current pool.min_premium_bps — must be > 0 for a meaningful
+        // below-floor test (DEFAULT_MIN_PREMIUM_BPS = 5 per create_pool).
+        const { value: acct } = await h.rpc
+          .getAccountInfo(poolPda, { encoding: 'base64' })
+          .send();
+        assert(acct, 'pool account should exist');
+        const pool = decodeCoveragePool(
+          new Uint8Array(Buffer.from(acct.data[0], 'base64')),
+        );
+        const minPremium = pool.minPremiumBps;
+        assert.ok(
+          minPremium > 0,
+          `min_premium_bps must be > 0 for this test, got ${minPremium}`,
+        );
+        const belowFloor = minPremium - 1;
+
+        // RateBelowFloor = 6028 / 0x178c.
+        const expectedCode = 6028;
+        const hex = expectedCode.toString(16);
+        const pattern = new RegExp(`#${expectedCode}\\b|0x${hex}\\b`, 'i');
+
+        let threw = false;
+        try {
+          await sendTx(
+            h,
+            authority,
+            getUpdateRatesInstruction({
+              config: protocolPda,
+              pool: poolPda,
+              oracleSigner,
+              newRateBps: belowFloor,
+            }),
+          );
+        } catch (err) {
+          threw = true;
+          const detail = JSON.stringify(err, Object.getOwnPropertyNames(err));
+          assert.match(
+            detail,
+            pattern,
+            `expected RateBelowFloor (${expectedCode}/0x${hex}), got: ${detail}`,
+          );
+        }
+        assert(threw, 'update_rates must reject rate < min_premium_bps');
       },
       counter,
     );

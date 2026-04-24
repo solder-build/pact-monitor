@@ -228,6 +228,39 @@
       }
     },
     {
+      "name": "updateRates",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only; source of `oracle` for the signer check."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Mutated in place (insuranceRateBps, updatedAt)."]
+        },
+        {
+          "name": "oracleSigner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Must match `config.oracle`. Handler rejects with UnauthorizedOracle (6025) otherwise. Dedicated oracle crank signer — admin authority stays cold."]
+        }
+      ],
+      "args": [
+        {
+          "name": "newRateBps",
+          "type": "u16"
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 9
+      }
+    },
+    {
       "name": "withdraw",
       "accounts": [
         {
@@ -444,6 +477,21 @@
       "code": 6026,
       "name": "FrozenConfigField",
       "msg": "treasury and usdc_mint are frozen after initialize_protocol."
+    },
+    {
+      "code": 6025,
+      "name": "UnauthorizedOracle",
+      "msg": "Signer is not the config oracle."
+    },
+    {
+      "code": 6027,
+      "name": "RateOutOfBounds",
+      "msg": "New insurance rate exceeds the 10_000 bps (100%) cap."
+    },
+    {
+      "code": 6028,
+      "name": "RateBelowFloor",
+      "msg": "New insurance rate is below pool.min_premium_bps."
     },
     {
       "code": 6030,
