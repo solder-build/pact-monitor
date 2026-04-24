@@ -24,6 +24,12 @@ enforce-deployer = []
 # 0.6 wants pinocchio 0.11, neither compatible with our pinned 0.10.
 pinocchio = { version = "0.10", features = ["cpi"] }
 bytemuck = { version = "1.14", features = ["derive"] }
+# WP-15 `submit_claim` hashes `args.call_id` (SHA-256) to derive the claim PDA's
+# third seed. `default-features = false` keeps `sha2` no-std so it compiles on
+# the SBF target. Matches the Anchor source dep exactly
+# (`packages/program/programs/pact-insurance/Cargo.toml`). If this ever fails
+# to link on SBF, the fallback is `solana_program::hash::hashv` per spec §8.12.
+sha2 = { version = "0.10", default-features = false }
 
 # SBF target: PDA derivation resolves to a syscall; no extra feature needed.
 # `copy` is required so `Address` implements `Copy` (WP-3 state structs

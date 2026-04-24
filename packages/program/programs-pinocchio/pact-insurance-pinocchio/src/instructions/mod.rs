@@ -11,6 +11,7 @@ pub mod disable_policy;
 pub mod enable_insurance;
 pub mod initialize_protocol;
 pub mod settle_premium;
+pub mod submit_claim;
 pub mod update_config;
 pub mod update_oracle;
 pub mod update_rates;
