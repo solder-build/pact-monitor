@@ -60,6 +60,12 @@ export type CoveragePool = {
   providerHostnameLen: number;
   bump: number;
   padTail: ReadonlyArray<number>;
+  /**
+   * WP-11.1 — 64-byte reserved pad. Project-wide convention (Rick Q3
+   * 2026-04-24). Distinct from `padTail`, whose byte 0 carries the vault PDA
+   * bump (WP-8 addendum).
+   */
+  reserved: ReadonlyArray<number>;
 };
 
 export function getCoveragePoolDecoder(): Decoder<CoveragePool> {
@@ -85,6 +91,7 @@ export function getCoveragePoolDecoder(): Decoder<CoveragePool> {
     ['providerHostnameLen', getU8Decoder()],
     ['bump', getU8Decoder()],
     ['padTail', getArrayDecoder(getU8Decoder(), { size: 6 })],
+    ['reserved', getArrayDecoder(getU8Decoder(), { size: 64 })],
   ]);
 }
 

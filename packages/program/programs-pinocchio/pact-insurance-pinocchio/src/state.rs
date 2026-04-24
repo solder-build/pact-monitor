@@ -18,6 +18,13 @@
 //! Helpers (`try_from_bytes`, `try_from_bytes_mut`) only validate length and
 //! discriminator. Owner checks belong at the `AccountView` layer in
 //! instruction handlers; this module is purely byte-level.
+//!
+//! Every struct ends with `reserved: [u8; 64]` — Rick-approved project-wide
+//! convention (Q3 confirmed 2026-04-24) that absorbs one future layout
+//! extension without forcing an account-migration instruction. PRD Feature 1
+//! (on-chain referrer reimbursement) is the first consumer and extends
+//! `Policy` with `referrer`/`referrer_present`/`referrer_share_bps` placed
+//! BEFORE the trailing `reserved` pad.
 
 use bytemuck::{Pod, Zeroable};
 use pinocchio::error::ProgramError;
@@ -54,6 +61,10 @@ pub struct ProtocolConfig {
     pub paused: u8,
     pub bump: u8,
     pub _pad_tail: [u8; 5],
+
+    /// Reserved for one future layout extension without a migration instruction.
+    /// Project-wide convention (Rick Q3 2026-04-24).
+    pub reserved: [u8; 64],
 }
 
 unsafe impl Zeroable for ProtocolConfig {}
@@ -106,7 +117,15 @@ pub struct CoveragePool {
 
     pub provider_hostname_len: u8,
     pub bump: u8,
+    /// WP-8/WP-10 repurposes `_pad_tail[0]` to store `vault_bump` (for the
+    /// `[b"vault", pool]` PDA) so hot-path handlers skip `find_program_address`.
+    /// That byte is load-bearing — do NOT move or repurpose `_pad_tail`.
     pub _pad_tail: [u8; 6],
+
+    /// Reserved for one future layout extension without a migration instruction.
+    /// Project-wide convention (Rick Q3 2026-04-24). Separate from `_pad_tail`
+    /// which already carries `vault_bump` in byte 0.
+    pub reserved: [u8; 64],
 }
 
 unsafe impl Zeroable for CoveragePool {}
@@ -153,6 +172,10 @@ pub struct UnderwriterPosition {
 
     pub bump: u8,
     pub _pad_tail: [u8; 7],
+
+    /// Reserved for one future layout extension without a migration instruction.
+    /// Project-wide convention (Rick Q3 2026-04-24).
+    pub reserved: [u8; 64],
 }
 
 unsafe impl Zeroable for UnderwriterPosition {}
@@ -197,6 +220,33 @@ pub struct Policy {
     pub active: u8,
     pub bump: u8,
     pub _pad_tail: [u8; 5],
+
+    // ---- Phase 5 Feature 1 (on-chain referrer reimbursement) ----
+    //
+    // `referrer` is `[u8; 32]` (align 1) — all-zero bytes is the "None"
+    // sentinel; `referrer_present` is the explicit discriminant so code never
+    // has to compare 32 zero bytes to answer "Some vs None". `bytemuck::Pod`
+    // rejects `bool` and `Option<Pubkey>`, hence the wire-level layout here.
+    //
+    // Validation (WP-12): `referrer_present == 0` iff `referrer_share_bps == 0`,
+    // and `referrer_share_bps <= MAX_REFERRER_SHARE_BPS`.
+    /// Referrer USDC ATA owner pubkey; all-zero bytes = None.
+    pub referrer: [u8; 32],
+    /// Premium share in bps (u16; align 2). Placed before `referrer_present`
+    /// so its 2-byte alignment falls on an even offset with zero implicit
+    /// padding.
+    pub referrer_share_bps: u16,
+    /// 1 = `referrer` slot populated; 0 = None. Paired bool + share flag.
+    pub referrer_present: u8,
+    /// Explicit alignment pad so `reserved: [u8; 64]` starts on an 8-byte
+    /// boundary and the struct total size stays a multiple of 8.
+    pub _pad_referrer: [u8; 5],
+
+    /// Reserved for one future layout extension without a migration instruction.
+    /// Project-wide convention (Rick Q3 2026-04-24). PRD Feature 1 call-out:
+    /// "DO NOT use this pad for unrelated fields — it exists specifically to
+    /// absorb the next referrer-model extension without a migration."
+    pub reserved: [u8; 64],
 }
 
 unsafe impl Zeroable for Policy {}
@@ -276,6 +326,10 @@ pub struct Claim {
     pub status: u8,
     pub bump: u8,
     pub _pad_tail: [u8; 7],
+
+    /// Reserved for one future layout extension without a migration instruction.
+    /// Project-wide convention (Rick Q3 2026-04-24).
+    pub reserved: [u8; 64],
 }
 
 unsafe impl Zeroable for Claim {}
@@ -350,6 +404,29 @@ const _: () = assert!(core::mem::offset_of!(UnderwriterPosition, pool) == 8);
 const _: () = assert!(core::mem::offset_of!(Policy, agent) == 8);
 const _: () = assert!(core::mem::offset_of!(Claim, policy) == 8);
 
+// Reserved-pad location is load-bearing: every struct places `reserved`
+// exactly 64 bytes from the end, so a future field can migrate into it by
+// shrinking the pad — no offset shift for earlier fields.
+const _: () = assert!(
+    core::mem::offset_of!(ProtocolConfig, reserved) == ProtocolConfig::LEN - 64,
+);
+const _: () = assert!(
+    core::mem::offset_of!(CoveragePool, reserved) == CoveragePool::LEN - 64,
+);
+const _: () = assert!(
+    core::mem::offset_of!(UnderwriterPosition, reserved) == UnderwriterPosition::LEN - 64,
+);
+const _: () = assert!(
+    core::mem::offset_of!(Policy, reserved) == Policy::LEN - 64,
+);
+const _: () = assert!(core::mem::offset_of!(Claim, reserved) == Claim::LEN - 64);
+
+// Phase 5 F1 — pin the referrer fields' offsets so WP-12's handler can't
+// drift against the decoders downstream.
+const _: () = assert!(core::mem::offset_of!(Policy, referrer) == 216);
+const _: () = assert!(core::mem::offset_of!(Policy, referrer_share_bps) == 248);
+const _: () = assert!(core::mem::offset_of!(Policy, referrer_present) == 250);
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -408,39 +485,64 @@ mod tests {
 
     #[test]
     fn protocol_config_size_has_no_hidden_padding() {
-        // 1 + 7 + 32*4 + 8*5 + 2*4 + 1*3 + 5 = 1+7+128+40+8+3+5 = 192
+        // 1 + 7 + 32*4 + 8*5 + 2*4 + 1*3 + 5 + 64 = 192 + 64 = 256
         let declared =
-            1 + 7 + 32 * 4 + 8 * 5 + 2 * 4 + 1 * 3 + 5;
+            1 + 7 + 32 * 4 + 8 * 5 + 2 * 4 + 1 * 3 + 5 + 64;
         assert_eq!(ProtocolConfig::LEN, declared);
     }
 
     #[test]
     fn coverage_pool_size_has_no_hidden_padding() {
-        // 1 + 7 + 32*3 + 64 + 8*6 + 8*3 + 4 + 2*2 + 1*2 + 6
+        // 1 + 7 + 32*3 + 64 + 8*6 + 8*3 + 4 + 2*2 + 1*2 + 6 + 64 = 256 + 64 = 320
         let declared =
-            1 + 7 + 32 * 3 + 64 + 8 * 6 + 8 * 3 + 4 + 2 * 2 + 1 * 2 + 6;
+            1 + 7 + 32 * 3 + 64 + 8 * 6 + 8 * 3 + 4 + 2 * 2 + 1 * 2 + 6 + 64;
         assert_eq!(CoveragePool::LEN, declared);
     }
 
     #[test]
     fn underwriter_position_size_has_no_hidden_padding() {
-        // 1 + 7 + 32*2 + 8*5 + 1 + 7
-        let declared = 1 + 7 + 32 * 2 + 8 * 5 + 1 + 7;
+        // 1 + 7 + 32*2 + 8*5 + 1 + 7 + 64 = 120 + 64 = 184
+        let declared = 1 + 7 + 32 * 2 + 8 * 5 + 1 + 7 + 64;
         assert_eq!(UnderwriterPosition::LEN, declared);
     }
 
     #[test]
     fn policy_size_has_no_hidden_padding() {
-        // 1 + 7 + 32*3 + 64 + 8*5 + 1*3 + 5
-        let declared = 1 + 7 + 32 * 3 + 64 + 8 * 5 + 1 * 3 + 5;
+        // Base: 1 + 7 + 32*3 + 64 + 8*5 + 1*3 + 5 = 216
+        // F1:   referrer[32] + u16 + u8 + pad[5] = 40
+        // Pad:  reserved[64]
+        // Total 216 + 40 + 64 = 320
+        let declared =
+            1 + 7 + 32 * 3 + 64 + 8 * 5 + 1 * 3 + 5 + 32 + 2 + 1 + 5 + 64;
         assert_eq!(Policy::LEN, declared);
     }
 
     #[test]
     fn claim_size_has_no_hidden_padding() {
-        // 1 + 7 + 32*3 + 32*2 + 8*5 + 4 + 2 + 1*3 + 7
-        let declared = 1 + 7 + 32 * 3 + 32 * 2 + 8 * 5 + 4 + 2 + 1 * 3 + 7;
+        // 1 + 7 + 32*3 + 32*2 + 8*5 + 4 + 2 + 1*3 + 7 + 64 = 224 + 64 = 288
+        let declared =
+            1 + 7 + 32 * 3 + 32 * 2 + 8 * 5 + 4 + 2 + 1 * 3 + 7 + 64;
         assert_eq!(Claim::LEN, declared);
+    }
+
+    // ---- Reserved pad is present and writable --------------------------
+
+    #[test]
+    fn reserved_pad_length_is_64_on_every_struct() {
+        assert_eq!(ProtocolConfig::zeroed().reserved.len(), 64);
+        assert_eq!(CoveragePool::zeroed().reserved.len(), 64);
+        assert_eq!(UnderwriterPosition::zeroed().reserved.len(), 64);
+        assert_eq!(Policy::zeroed().reserved.len(), 64);
+        assert_eq!(Claim::zeroed().reserved.len(), 64);
+    }
+
+    #[test]
+    fn expected_struct_sizes() {
+        assert_eq!(ProtocolConfig::LEN, 256);
+        assert_eq!(CoveragePool::LEN, 320);
+        assert_eq!(UnderwriterPosition::LEN, 184);
+        assert_eq!(Policy::LEN, 320);
+        assert_eq!(Claim::LEN, 288);
     }
 
     // ---- Round-trip tests (zero → populate → bytes_of → try_from_bytes) ---
@@ -465,6 +567,7 @@ mod tests {
         cfg.max_claims_per_batch = 10;
         cfg.paused = 0;
         cfg.bump = 254;
+        cfg.reserved = [0xAB; 64];
 
         let bytes = bytemuck::bytes_of(&cfg);
         assert_eq!(bytes.len(), ProtocolConfig::LEN);
@@ -487,6 +590,7 @@ mod tests {
         assert_eq!(decoded.max_claims_per_batch, cfg.max_claims_per_batch);
         assert_eq!(decoded.paused, cfg.paused);
         assert_eq!(decoded.bump, cfg.bump);
+        assert_eq!(decoded.reserved, [0xAB; 64]);
     }
 
     #[test]
@@ -512,6 +616,7 @@ mod tests {
         pool.insurance_rate_bps = 25;
         pool.min_premium_bps = 5;
         pool.bump = 253;
+        pool.reserved = [0xCD; 64];
 
         let bytes = bytemuck::bytes_of(&pool);
         let decoded = CoveragePool::try_from_bytes(bytes).unwrap();
@@ -533,6 +638,7 @@ mod tests {
         assert_eq!(decoded.insurance_rate_bps, 25);
         assert_eq!(decoded.min_premium_bps, 5);
         assert_eq!(decoded.bump, 253);
+        assert_eq!(decoded.reserved, [0xCD; 64]);
     }
 
     #[test]
@@ -547,6 +653,7 @@ mod tests {
         pos.deposit_timestamp = 400;
         pos.last_claim_timestamp = 500;
         pos.bump = 250;
+        pos.reserved = [0xEF; 64];
 
         let bytes = bytemuck::bytes_of(&pos);
         let decoded = UnderwriterPosition::try_from_bytes(bytes).unwrap();
@@ -559,6 +666,7 @@ mod tests {
         assert_eq!(decoded.deposit_timestamp, 400);
         assert_eq!(decoded.last_claim_timestamp, 500);
         assert_eq!(decoded.bump, 250);
+        assert_eq!(decoded.reserved, [0xEF; 64]);
     }
 
     #[test]
@@ -578,6 +686,7 @@ mod tests {
         policy.expires_at = 5;
         policy.active = 1;
         policy.bump = 249;
+        policy.reserved = [0x12; 64];
 
         let bytes = bytemuck::bytes_of(&policy);
         let decoded = Policy::try_from_bytes(bytes).unwrap();
@@ -593,6 +702,41 @@ mod tests {
         assert_eq!(decoded.expires_at, 5);
         assert_eq!(decoded.active, 1);
         assert_eq!(decoded.bump, 249);
+        assert_eq!(decoded.reserved, [0x12; 64]);
+
+        // Zero-initialized Phase 5 F1 fields default to `None` referrer.
+        assert_eq!(decoded.referrer, [0u8; 32]);
+        assert_eq!(decoded.referrer_present, 0);
+        assert_eq!(decoded.referrer_share_bps, 0);
+    }
+
+    #[test]
+    fn policy_round_trip_with_referrer_populated() {
+        // Phase 5 F1 — policy with a referrer snapshot captured at creation.
+        let mut policy = Policy::zeroed();
+        policy.discriminator = Policy::DISCRIMINATOR;
+        policy.agent = addr(0x71);
+        policy.pool = addr(0x72);
+        policy.agent_token_account = addr(0x73);
+        let id = b"agent-with-ref";
+        policy.agent_id[..id.len()].copy_from_slice(id);
+        policy.agent_id_len = id.len() as u8;
+        policy.active = 1;
+        policy.bump = 240;
+
+        policy.referrer = [0xAB; 32];
+        policy.referrer_present = 1;
+        policy.referrer_share_bps = 1_000; // 10% of premium.
+        policy.reserved = [0x55; 64];
+
+        let bytes = bytemuck::bytes_of(&policy);
+        assert_eq!(bytes.len(), Policy::LEN);
+
+        let decoded = Policy::try_from_bytes(bytes).unwrap();
+        assert_eq!(decoded.referrer, [0xAB; 32]);
+        assert_eq!(decoded.referrer_present, 1);
+        assert_eq!(decoded.referrer_share_bps, 1_000);
+        assert_eq!(decoded.reserved, [0x55; 64]);
     }
 
     #[test]
@@ -614,6 +758,7 @@ mod tests {
         claim.trigger_type = TriggerType::Timeout as u8;
         claim.status = ClaimStatus::Pending as u8;
         claim.bump = 248;
+        claim.reserved = [0x7F; 64];
 
         let bytes = bytemuck::bytes_of(&claim);
         let decoded = Claim::try_from_bytes(bytes).unwrap();
@@ -633,6 +778,7 @@ mod tests {
         assert_eq!(decoded.trigger_type().unwrap(), TriggerType::Timeout);
         assert_eq!(decoded.status().unwrap(), ClaimStatus::Pending);
         assert_eq!(decoded.bump, 248);
+        assert_eq!(decoded.reserved, [0x7F; 64]);
     }
 
     // ---- Mut round-trip (verify try_from_bytes_mut lets callers write) ---

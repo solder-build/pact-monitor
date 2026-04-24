@@ -42,6 +42,12 @@ export type UnderwriterPosition = {
   lastClaimTimestamp: bigint;
   bump: number;
   padTail: ReadonlyArray<number>;
+  /**
+   * WP-11.1 — 64-byte reserved pad. Project-wide convention (Rick Q3
+   * 2026-04-24) so one future layout extension can land without a
+   * state-migration instruction.
+   */
+  reserved: ReadonlyArray<number>;
 };
 
 export function getUnderwriterPositionDecoder(): Decoder<UnderwriterPosition> {
@@ -57,6 +63,7 @@ export function getUnderwriterPositionDecoder(): Decoder<UnderwriterPosition> {
     ['lastClaimTimestamp', getI64Decoder()],
     ['bump', getU8Decoder()],
     ['padTail', getArrayDecoder(getU8Decoder(), { size: 7 })],
+    ['reserved', getArrayDecoder(getU8Decoder(), { size: 64 })],
   ]);
 }
 

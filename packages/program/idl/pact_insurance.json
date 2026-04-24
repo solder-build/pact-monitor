@@ -348,7 +348,8 @@
           { "name": "maxClaimsPerBatch", "type": "u8" },
           { "name": "paused", "type": "u8" },
           { "name": "bump", "type": "u8" },
-          { "name": "padTail", "type": { "array": ["u8", 5] } }
+          { "name": "padTail", "type": { "array": ["u8", 5] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
         ]
       }
     },
@@ -377,7 +378,8 @@
           { "name": "minPremiumBps", "type": "u16" },
           { "name": "providerHostnameLen", "type": "u8" },
           { "name": "bump", "type": "u8" },
-          { "name": "padTail", "type": { "array": ["u8", 6] } }
+          { "name": "padTail", "type": { "array": ["u8", 6] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
         ]
       }
     },
@@ -396,7 +398,63 @@
           { "name": "depositTimestamp", "type": "i64" },
           { "name": "lastClaimTimestamp", "type": "i64" },
           { "name": "bump", "type": "u8" },
-          { "name": "padTail", "type": { "array": ["u8", 7] } }
+          { "name": "padTail", "type": { "array": ["u8", 7] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
+        ]
+      }
+    },
+    {
+      "name": "Policy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "discriminator", "type": "u8" },
+          { "name": "pad", "type": { "array": ["u8", 7] } },
+          { "name": "agent", "type": "publicKey" },
+          { "name": "pool", "type": "publicKey" },
+          { "name": "agentTokenAccount", "type": "publicKey" },
+          { "name": "agentId", "type": { "array": ["u8", 64] } },
+          { "name": "totalPremiumsPaid", "type": "u64" },
+          { "name": "totalClaimsReceived", "type": "u64" },
+          { "name": "callsCovered", "type": "u64" },
+          { "name": "createdAt", "type": "i64" },
+          { "name": "expiresAt", "type": "i64" },
+          { "name": "agentIdLen", "type": "u8" },
+          { "name": "active", "type": "u8" },
+          { "name": "bump", "type": "u8" },
+          { "name": "padTail", "type": { "array": ["u8", 5] } },
+          { "name": "referrer", "type": { "array": ["u8", 32] } },
+          { "name": "referrerShareBps", "type": "u16" },
+          { "name": "referrerPresent", "type": "u8" },
+          { "name": "padReferrer", "type": { "array": ["u8", 5] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
+        ]
+      }
+    },
+    {
+      "name": "Claim",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "discriminator", "type": "u8" },
+          { "name": "pad", "type": { "array": ["u8", 7] } },
+          { "name": "policy", "type": "publicKey" },
+          { "name": "pool", "type": "publicKey" },
+          { "name": "agent", "type": "publicKey" },
+          { "name": "callId", "type": { "array": ["u8", 32] } },
+          { "name": "evidenceHash", "type": { "array": ["u8", 32] } },
+          { "name": "paymentAmount", "type": "u64" },
+          { "name": "refundAmount", "type": "u64" },
+          { "name": "callTimestamp", "type": "i64" },
+          { "name": "createdAt", "type": "i64" },
+          { "name": "resolvedAt", "type": "i64" },
+          { "name": "latencyMs", "type": "u32" },
+          { "name": "statusCode", "type": "u16" },
+          { "name": "triggerType", "type": "u8" },
+          { "name": "status", "type": "u8" },
+          { "name": "bump", "type": "u8" },
+          { "name": "padTail", "type": { "array": ["u8", 7] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
         ]
       }
     }

@@ -32,3 +32,10 @@ pub const DEFAULT_AGGREGATE_CAP_BPS: u16 = 3000;
 pub const DEFAULT_AGGREGATE_CAP_WINDOW: i64 = 86_400;
 pub const DEFAULT_CLAIM_WINDOW: i64 = 3600;
 pub const DEFAULT_MAX_CLAIMS_PER_BATCH: u8 = 10;
+
+/// Maximum referrer share in basis points (Rick Q2 confirmed 2026-04-24).
+/// Unit: bps of PREMIUM (not pool balance).
+/// Formula: `referrer_cut = premium * share_bps / 10_000`.
+/// Consumed by WP-12 (`enable_insurance`) validation and WP-14
+/// (`settle_premium`) split math.
+pub const MAX_REFERRER_SHARE_BPS: u16 = 3000;
