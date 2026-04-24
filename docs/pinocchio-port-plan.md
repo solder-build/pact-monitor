@@ -28,7 +28,7 @@ These are repeated at the top of every per-WP spawn prompt in Section C. Violati
 
 WP-1 landed at commit `2524cae` (SBF size 5.4 KiB vs Anchor's 461 KiB). Five deviations from the original plan that now apply to WP-2..WP-20:
 
-1. **Crate directory** is `packages/program/programs-pinocchio/pact-insurance-pinocchio/`, NOT `packages/program/programs/pact-insurance-pinocchio/`. Reason: Anchor 1.0's workspace auto-scans `programs/*` as Anchor crates and fails the test build if any subdir isn't Anchor. WP-17 collapses to a single `programs/` at cut-over.
+1. **Crate directory** is `packages/program/programs-pinocchio/pact-insurance-pinocchio/`, NOT `packages/program/programs/pact-insurance-pinocchio/`. Reason: Anchor 1.0's workspace auto-scans `programs/*` as Anchor crates and fails the test build if any subdir isn't Anchor. **The split persists permanently** — WP-17 (Alan 2026-04-24) decided to KEEP the Anchor crate as a legacy fallback, so both directories coexist indefinitely. Future cleanup phase (after Pinocchio mainnet stability) can revisit.
 2. **`pinocchio-system` and `pinocchio-token` are NOT yet in `Cargo.toml`.** Version alignment: `pinocchio = "0.10"` is incompatible with both `pinocchio-system 0.4` (requires 0.9) and `0.6` (requires 0.11). The first CPI-touching WP (WP-8 `create_pool`) must either pin a git commit of those helpers that aligns with 0.10 or drop to hand-rolled CPI via `pinocchio::cpi::invoke_signed`. Flag as a mini-blocker for WP-8 planner.
 3. **`declare_id!`** comes from `solana-address = { version = "2", features = ["decode"] }` (added as direct dep), NOT from `pinocchio` or `pinocchio-pubkey`. Pinocchio 0.10 dropped `declare_id!`; `pinocchio-pubkey 0.3` targets the 0.9 Pubkey API. All instruction handlers should `use solana_address::Address` (which is what `pinocchio 0.10`'s `account::AccountView::key()` returns anyway).
 4. **Pinocchio 0.10 API paths** differ from the skill docs:
@@ -66,7 +66,7 @@ WP-1 landed at commit `2524cae` (SBF size 5.4 KiB vs Anchor's 461 KiB). Five dev
 
 ## Section A — Work Packages
 
-Naming: new Pinocchio crate begins life as `pact_insurance_pinocchio` at `packages/program/programs-pinocchio/pact-insurance-pinocchio/`, parallel to the existing Anchor crate. At cut-over (WP-17) it is renamed to `pact_insurance` and the Anchor crate is deleted.
+Naming: new Pinocchio crate lives as `pact_insurance_pinocchio` at `packages/program/programs-pinocchio/pact-insurance-pinocchio/`, parallel to the Anchor crate at `packages/program/programs/pact-insurance/`. **Both crates coexist permanently** (Alan 2026-04-24, WP-17 scope change): Pinocchio becomes the default/primary at cut-over; Anchor stays in-tree as a tested legacy fallback. No rename, no delete.
 
 ### WP-1: Scaffolding — parallel Pinocchio crate
 
@@ -259,17 +259,34 @@ Naming: new Pinocchio crate begins life as `pact_insurance_pinocchio` at `packag
 - **Scope size:** M.
 - **Risk flags:** if a test fails in a way that implicates spec ambiguity, stop and escalate — do not edit the Pinocchio handler inside the regression-run PR.
 
-### WP-17: Cut-over — rename Pinocchio crate, delete Anchor crate
+### WP-17: Cut-over — promote Pinocchio crate, **retain Anchor crate as legacy fallback**
 
-- **Scope:** delete `packages/program/programs/pact-insurance/` (the Anchor crate). Rename `packages/program/programs-pinocchio/pact-insurance-pinocchio/` → `packages/program/programs/pact-insurance/`. Update crate name in `Cargo.toml` from `pact_insurance_pinocchio` to `pact_insurance`. Update the root workspace `packages/program/Cargo.toml`. Remove Anchor-specific `Anchor.toml` sections referencing anchor build steps; keep the deploy/cluster config. Delete old Anchor IDL shipping artifacts from `packages/insurance/src/idl/pact_insurance.json`. Finalize `packages/insurance/src/generated/` as the sole on-chain client surface. Delete `packages/insurance/src/anchor-client.ts`; replace with `packages/insurance/src/kit-client.ts` (Codama + `@solana/kit`). Update `packages/insurance/src/client.ts` and `packages/insurance/src/index.ts` so the exported `PactInsurance` class surface from spec §7.1 is **identical** — only the transport underneath changes.
+**SCOPE CHANGE (Alan 2026-04-24):** Do NOT delete the Anchor crate. Alan wants a tested fallback available if the Pinocchio deploy misbehaves on devnet. Rollback path = rebuild the Anchor crate and redeploy under the same program ID.
+
+- **Scope:**
+  - **KEEP** `packages/program/programs/pact-insurance/` (the Anchor crate) intact. Do NOT delete. Do NOT rename the Pinocchio crate INTO that directory — Anchor 1.0 auto-scans `programs/*` as Anchor crates and would break building.
+  - The Pinocchio crate stays at `packages/program/programs-pinocchio/pact-insurance-pinocchio/`. Directory split persists.
+  - **Promote Pinocchio in the build system:**
+    - CI default-builds Pinocchio (`cargo build-sbf` on the Pinocchio crate). Keep a `legacy-anchor-build` job that still runs `anchor build` on the Anchor crate, but mark it non-blocking / informational.
+    - Deploy scripts (`packages/program/scripts/deploy.*`) target the Pinocchio binary by default. Add a `--legacy-anchor` flag for one-command fallback.
+    - SDK (`packages/insurance/`) imports Pinocchio IDL + generated Codama client as the primary surface.
+  - **SDK surface consolidation (still applies):**
+    - Finalize `packages/insurance/src/generated/` as the DEFAULT on-chain client surface.
+    - Rename `packages/insurance/src/anchor-client.ts` → `packages/insurance/src/legacy-anchor-client.ts` (keep it exported but not default). Add `packages/insurance/src/kit-client.ts` (Codama + `@solana/kit`) as the default export.
+    - Update `packages/insurance/src/client.ts` and `packages/insurance/src/index.ts` so the exported `PactInsurance` class surface from spec §7.1 is **identical** — only the transport underneath changes. Default transport = Pinocchio/Codama; legacy Anchor transport accessible via opt-in export.
+  - **Document the legacy fallback:**
+    - Add `packages/program/programs/pact-insurance/README.md` with a LEGACY banner: "This Anchor crate is retained as a rollback fallback for the Pinocchio port. Default builds target the Pinocchio crate at `../../programs-pinocchio/`. To fall back, run `anchor build` here and deploy the resulting `.so`."
+    - Update top-level `CLAUDE.md` Monorepo Structure section to reflect BOTH crates existing side by side.
 - **Dependencies:** WP-16 merged.
 - **Exit criteria:**
-  - `packages/program/` has exactly one crate named `pact_insurance`.
-  - `anchor build` command removed from CI; replaced by `cargo build-sbf`.
-  - `@q3labs/pact-insurance` exports in `packages/insurance/src/index.ts` unchanged (public types + class surface byte-identical per spec §7.1).
-  - Full 42-test suite green.
-- **Scope size:** L.
-- **Risk flags:** this is the destructive, hard-to-revert step. Two safeguards: (a) cut a tag `pre-pinocchio-cutover` immediately before merge; (b) do not run `solana program deploy` from this PR — that lives in WP-19.
+  - Both crates build: `cargo build-sbf` on Pinocchio = green AND `anchor build` on the Anchor crate = green.
+  - CI default pipeline = Pinocchio-only; legacy Anchor job = informational.
+  - `@q3labs/pact-insurance` default transport = Codama/`@solana/kit` against Pinocchio; legacy Anchor transport still reachable via explicit export.
+  - Full 42-test suite green against the Pinocchio crate.
+  - Anchor crate README has LEGACY banner.
+- **Scope size:** M (reduced from L — no deletions, no cross-directory rename).
+- **Risk flags:** this is still a notable transition. Two safeguards: (a) cut a tag `pre-pinocchio-promote` immediately before merge; (b) do not run `solana program deploy` from this PR — that lives in WP-19. The legacy Anchor crate gives you a concrete rollback without needing to revert this PR.
+- **Follow-up phase (OUT OF SCOPE FOR WP-17):** once Pinocchio is stable on mainnet for some minimum period, a future cleanup PR can delete the Anchor crate. Revisit with Alan after launch.
 
 ### WP-18: Backend wiring — `packages/backend/`
 
@@ -898,10 +915,10 @@ Commit prefix: `test(program): WP-16 full 42-test regression against Pinocchio`.
 
 ---
 
-### PROMPT WP-17: Cut-over
+### PROMPT WP-17: Cut-over (promote Pinocchio, retain Anchor as legacy)
 
 ```
-WP-17 of 20 — destructive cut-over. Delete Anchor crate, rename Pinocchio crate, swap SDK transport. **Tag `pre-pinocchio-cutover` BEFORE opening this PR.**
+WP-17 of 20 — promotion, NOT deletion. Alan 2026-04-24 scope change: KEEP the Anchor crate in-tree as a legacy fallback. Promote the Pinocchio crate in the build system + swap SDK default transport. Tag `pre-pinocchio-promote` BEFORE opening this PR.
 
 Invoke:
 - pinocchio-development
@@ -909,31 +926,36 @@ Invoke:
 
 Read first:
 - docs/pinocchio-migration-spec.md §7, §10
-- docs/pinocchio-port-plan.md Sections D + E
+- docs/pinocchio-port-plan.md Sections D + E AND the revised WP-17 row in Section A (Alan's scope change)
 - packages/insurance/src/index.ts (public exports are BYTE-IDENTICAL after the swap)
-- packages/insurance/src/anchor-client.ts (delete this file)
-- packages/insurance/src/client.ts (re-targets the transport under the hood)
+- packages/insurance/src/anchor-client.ts (RENAME, don't delete)
+- packages/insurance/src/client.ts (re-targets the default transport under the hood)
 
 Scope:
-- Delete `packages/program/programs/pact-insurance/` (Anchor crate).
-- Rename `packages/program/programs-pinocchio/pact-insurance-pinocchio/` → `packages/program/programs/pact-insurance/`.
-- Rename crate identifier `pact_insurance_pinocchio` → `pact_insurance` in the new Cargo.toml.
-- Remove the old Anchor crate's entry from the workspace root manifest.
-- Remove `anchor build` references in CI workflows and deploy scripts; replace with `cargo build-sbf`.
-- Delete `packages/insurance/src/idl/pact_insurance.json` (Anchor IDL is gone). Keep the Shank IDL in `packages/insurance/src/generated/idl.json`.
-- Delete `packages/insurance/src/anchor-client.ts`; create `packages/insurance/src/kit-client.ts` wrapping Codama-generated builders + `@solana/kit` RPC.
-- `packages/insurance/src/client.ts` still exports the `PactInsurance` class with the SAME public methods (spec §7.1) — only the transport changes.
+- KEEP packages/program/programs/pact-insurance/ (Anchor crate) intact. DO NOT delete. DO NOT rename the Pinocchio crate into the programs/ directory (Anchor 1.0 auto-scan breaks).
+- Pinocchio crate stays at packages/program/programs-pinocchio/pact-insurance-pinocchio/. Directory split persists.
+- Promote Pinocchio in CI: default build = `cargo build-sbf` on Pinocchio crate. Keep `anchor build` as a secondary non-blocking `legacy-anchor-build` CI job.
+- Update deploy scripts (packages/program/scripts/deploy.*) to target Pinocchio binary by default; add a `--legacy-anchor` flag for one-command fallback.
+- SDK surface change:
+  - Rename `packages/insurance/src/anchor-client.ts` → `packages/insurance/src/legacy-anchor-client.ts`. Keep it exported from index.ts but NOT as default.
+  - Add `packages/insurance/src/kit-client.ts` wrapping Codama-generated builders + `@solana/kit` RPC. This is the NEW default transport.
+  - Update `packages/insurance/src/client.ts` so the `PactInsurance` class surface from spec §7.1 is byte-identical; only the internal transport swaps to kit-client.
+  - Flip `packages/insurance/scripts/codama-generate.mjs` to `USE_CODAMA = true`; run real Codama against the complete IDL in packages/program/idl/pact_insurance.json and reconcile any drift vs the hand-written files under `src/generated/`.
+- Add `packages/program/programs/pact-insurance/README.md` with a LEGACY banner: "This Anchor crate is retained as a rollback fallback for the Pinocchio port. Default builds target the Pinocchio crate at ../../programs-pinocchio/. To fall back, run `anchor build` here and deploy the resulting .so."
+- Update top-level `CLAUDE.md` Monorepo Structure section to reflect BOTH crates existing side by side.
 - Bump `@q3labs/pact-insurance` version per semver judgment (likely major — note to Alan).
 
 Exit criteria:
-- Exactly one program crate named `pact_insurance` at `packages/program/programs/pact-insurance/`.
-- `@q3labs/pact-insurance` index.ts exports byte-identical to pre-cut-over.
-- Full 42-test suite green on the single crate.
-- Tag `pre-pinocchio-cutover` exists before merge.
+- BOTH crates build successfully: `cargo build-sbf` on Pinocchio = green AND `anchor build` on Anchor crate = green.
+- CI default pipeline builds ONLY Pinocchio; the `legacy-anchor-build` job is informational.
+- `@q3labs/pact-insurance` default transport = Codama/@solana/kit against Pinocchio; legacy Anchor transport reachable via explicit named export.
+- Full 42-test suite green against the Pinocchio crate.
+- Anchor crate README has LEGACY banner.
+- Tag `pre-pinocchio-promote` exists before merge.
 
-Alan's locked decisions: 6-bullet boilerplate. **#2 (no migration) is especially load-bearing here — this is the step that would tempt a crew member to write a migration; don't.**
+Alan's locked decisions: 6-bullet boilerplate. **#2 (no migration) still load-bearing — don't write a migration instruction.** Plus NEW locked decision: KEEP Anchor crate, don't delete. Don't even touch its source.
 
-Commit prefix: `refactor(program): WP-17 cut over to Pinocchio crate, retire Anchor`.
+Commit prefix: `refactor(program): WP-17 promote Pinocchio, retain Anchor legacy`.
 ```
 
 ---
