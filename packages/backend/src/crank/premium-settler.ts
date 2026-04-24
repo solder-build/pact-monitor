@@ -1,15 +1,27 @@
 import type { FastifyInstance } from "fastify";
 import { PublicKey } from "@solana/web3.js";
-import BN from "bn.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { address } from "@solana/kit";
+import { generated } from "@pact-network/insurance";
+const {
+  decodeProtocolConfig,
+  decodeCoveragePool,
+  decodePolicy,
+  getCoveragePoolHostname,
+  findProtocolConfigPda,
+  getSettlePremiumInstruction,
+  COVERAGE_POOL_DISCRIMINATOR,
+  POLICY_DISCRIMINATOR,
+} = generated;
 import {
-  getAssociatedTokenAddressSync,
-  TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
-import {
-  createSolanaClient,
-  deriveProtocolPda,
+  createKitSolanaClient,
   getSolanaConfig,
 } from "../utils/solana.js";
+import {
+  kitFetchAccountBytes,
+  kitGetProgramAccounts,
+  kitSendTx,
+} from "../utils/kit-rpc.js";
 import { query } from "../db.js";
 
 interface CallValueRow {
@@ -20,8 +32,6 @@ interface WatermarkRow {
   last_settled_at: Date;
 }
 
-// Fallback window when a policy has never been settled before (no row in
-// policy_settlements). First settlement picks up at most this much history.
 const INITIAL_WATERMARK_INTERVAL = "15 minutes";
 
 /**
@@ -29,58 +39,86 @@ const INITIAL_WATERMARK_INTERVAL = "15 minutes";
  *
  * For every active policy across every coverage pool, sum the call_records
  * payment_amount for that (provider, agent) pair over the recent window and
- * call settle_premium with the aggregated call_value. The program derives
- * premium from call_value * insurance_rate_bps and transfers USDC from the
- * agent's delegated ATA to the pool vault + treasury.
+ * call settle_premium with the aggregated call_value.
  */
 export async function runPremiumSettler(app: FastifyInstance): Promise<void> {
-  const { program, programId, oracleKeypair } = createSolanaClient(getSolanaConfig());
-  const [protocolPda] = deriveProtocolPda(programId);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const config: any = await (program.account as any).protocolConfig.fetch(protocolPda);
-  const treasuryTokenAccount = getAssociatedTokenAddressSync(
-    config.usdcMint,
-    config.treasury,
+  const config = getSolanaConfig();
+  const client = await createKitSolanaClient(config);
+
+  const [protocolConfigAddr] = await findProtocolConfigPda();
+  const configBytes = await kitFetchAccountBytes(client, protocolConfigAddr as string);
+  if (!configBytes) {
+    app.log.warn("Premium settler: protocol config not found");
+    return;
+  }
+  const protocolConfig = decodeProtocolConfig(configBytes);
+
+  const treasuryAta = getAssociatedTokenAddressSync(
+    new PublicKey(protocolConfig.treasury as string),
+    new PublicKey(protocolConfig.usdcMint as string),
   );
+  const treasuryAtaAddr = address(treasuryAta.toBase58());
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pools: any[] = await (program.account as any).coveragePool.all();
-  app.log.debug({ poolCount: pools.length }, "Premium settler: fetched pools");
+  const poolAccounts = await kitGetProgramAccounts(client, [
+    {
+      memcmp: {
+        offset: 0,
+        bytes: Buffer.from([COVERAGE_POOL_DISCRIMINATOR]).toString("base64"),
+        encoding: "base64",
+      },
+    },
+  ]);
+  app.log.debug({ poolCount: poolAccounts.length }, "Premium settler: fetched pools");
 
-  for (const pool of pools) {
-    const poolPda: PublicKey = pool.publicKey;
-    const hostname: string = pool.account.providerHostname;
+  for (const poolAcct of poolAccounts) {
+    let pool: ReturnType<typeof decodeCoveragePool>;
+    try {
+      pool = decodeCoveragePool(poolAcct.data);
+    } catch {
+      continue;
+    }
 
-    // Policy struct: agent (32) + pool (32) ... so the `pool` field lives at
-    // offset 8 + 32 after the account discriminator.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const policies: any[] = await (program.account as any).policy.all([
-      { memcmp: { offset: 8 + 32, bytes: poolPda.toBase58() } },
+    const hostname = getCoveragePoolHostname(pool);
+    const poolAddr = address(poolAcct.pubkey);
+    const vaultAddr = address(pool.vault as string);
+
+    // Policy accounts for this pool: `pool` field is at offset 8+32=40
+    // (disc:1 + pad:7 + agent:32 = 40). Matches Convention #16 from port plan.
+    const policyAccounts = await kitGetProgramAccounts(client, [
+      {
+        memcmp: {
+          offset: 0,
+          bytes: Buffer.from([POLICY_DISCRIMINATOR]).toString("base64"),
+          encoding: "base64",
+        },
+      },
+      {
+        memcmp: {
+          offset: 40,
+          bytes: poolAcct.pubkey,
+          encoding: "base58",
+        },
+      },
     ]);
 
-    for (const entry of policies) {
-      const policy = entry.account;
-      if (!policy.active) continue;
+    for (const policyAcct of policyAccounts) {
+      let policy: ReturnType<typeof decodePolicy>;
+      try {
+        policy = decodePolicy(policyAcct.data);
+      } catch {
+        continue;
+      }
+      if (policy.active === 0) continue;
 
-      const policyPdaStr = entry.publicKey.toString();
-      const agentPubkey = (policy.agent as PublicKey).toBase58();
+      const policyPdaStr = policyAcct.pubkey;
+      const agentPubkey = policy.agent as string;
 
-      // Look up the policy's settlement watermark. If absent, treat the
-      // watermark as NOW() - INITIAL_WATERMARK_INTERVAL so first settlement
-      // picks up at most that window of history (and never older than
-      // policy creation itself, since older records won't have this agent
-      // as agent_pubkey).
       const watermarkResult = await query<WatermarkRow>(
         `SELECT last_settled_at FROM policy_settlements WHERE policy_pda = $1`,
         [policyPdaStr],
       );
       const hasWatermark = watermarkResult.rows.length > 0;
 
-      // Match by agent_pubkey (canonical on-chain identity) rather than
-      // agent_id string, since call_records.agent_id comes from the API
-      // key label middleware and doesn't necessarily match policy.agentId.
-      // The `created_at > watermark` filter ensures each call_record
-      // contributes to exactly one settlement.
       const sumSql = hasWatermark
         ? `SELECT COALESCE(SUM(cr.payment_amount), 0)::text AS total
            FROM call_records cr
@@ -102,12 +140,10 @@ export async function runPremiumSettler(app: FastifyInstance): Promise<void> {
         : [agentPubkey, hostname];
 
       const result = await query<CallValueRow>(sumSql, params);
-
       const callValueStr = result.rows[0]?.total ?? "0";
       const callValue = BigInt(callValueStr);
+
       if (callValue === 0n) {
-        // Still advance the watermark even when there's nothing to settle,
-        // so we don't re-scan the same historical window next cycle.
         await query(
           `INSERT INTO policy_settlements (policy_pda, last_settled_at, updated_at)
            VALUES ($1, NOW(), NOW())
@@ -119,23 +155,32 @@ export async function runPremiumSettler(app: FastifyInstance): Promise<void> {
       }
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sig: string = await (program.methods as any)
-          .settlePremium(new BN(callValue.toString()))
-          .accounts({
-            config: protocolPda,
-            pool: poolPda,
-            vault: pool.account.vault,
-            policy: entry.publicKey,
-            agentTokenAccount: policy.agentTokenAccount,
-            treasuryTokenAccount,
-            oracle: oracleKeypair.publicKey,
-            tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .rpc();
+        const agentAtaAddr = address(policy.agentTokenAccount as string);
 
-        // Only advance the watermark AFTER the on-chain settle succeeds,
-        // so a failed settlement retries the same records next cycle.
+        const settlePremiumInput: Parameters<typeof getSettlePremiumInstruction>[0] = {
+          config: protocolConfigAddr,
+          pool: poolAddr,
+          vault: vaultAddr,
+          policy: address(policyPdaStr),
+          treasuryAta: treasuryAtaAddr,
+          agentAta: agentAtaAddr,
+          oracleSigner: client.oracleSigner,
+          callValue,
+        };
+
+        // Phase 5 F1: append referrer ATA when referrer is present.
+        if (policy.referrerPresent !== 0) {
+          const referrerPk = new PublicKey(
+            Buffer.from(policy.referrer as number[]),
+          );
+          const usdcMintPk = new PublicKey(protocolConfig.usdcMint as string);
+          const referrerAta = getAssociatedTokenAddressSync(usdcMintPk, referrerPk);
+          settlePremiumInput.referrerTokenAccount = address(referrerAta.toBase58());
+        }
+
+        const ix = getSettlePremiumInstruction(settlePremiumInput);
+        const sig = await kitSendTx(client, [ix]);
+
         await query(
           `INSERT INTO policy_settlements (policy_pda, last_settled_at, updated_at)
            VALUES ($1, NOW(), NOW())
@@ -163,8 +208,6 @@ export async function runPremiumSettler(app: FastifyInstance): Promise<void> {
           },
           "settle_premium failed for policy",
         );
-        // Do NOT advance the watermark on failure; next cycle will retry.
-        // Do NOT throw — keep settling other policies.
       }
     }
   }

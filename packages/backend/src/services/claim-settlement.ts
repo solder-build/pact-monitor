@@ -1,16 +1,27 @@
-import { PublicKey, SystemProgram, type TransactionSignature } from "@solana/web3.js";
-import BN from "bn.js";
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { PublicKey, type TransactionSignature } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { createHash } from "crypto";
+import { address } from "@solana/kit";
+import { generated } from "@pact-network/insurance";
+const {
+  decodeProtocolConfig,
+  decodeClaim,
+  findProtocolConfigPda,
+  findCoveragePoolPda,
+  findCoveragePoolVaultPda,
+  findPolicyPda,
+  findClaimPda,
+  getSubmitClaimInstruction,
+  TriggerType,
+} = generated;
 import {
-  createSolanaClient,
-  deriveProtocolPda,
-  derivePoolPda,
-  deriveVaultPda,
-  derivePolicyPda,
-  deriveClaimPda,
+  createKitSolanaClient,
   getSolanaConfig,
 } from "../utils/solana.js";
+import {
+  kitFetchAccountBytes,
+  kitSendTx,
+} from "../utils/kit-rpc.js";
 
 export interface CallRecord {
   id: string;
@@ -31,41 +42,46 @@ export interface ClaimSubmissionResult {
   claimPda: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const triggerTypeMap: Record<string, any> = {
-  timeout: { timeout: {} },
-  error: { error: {} },
-  schema_mismatch: { schemaMismatch: {} },
-  latency_sla: { latencySla: {} },
+const triggerTypeMap: Record<string, number> = {
+  timeout: TriggerType.Timeout,
+  error: TriggerType.Error,
+  schema_mismatch: TriggerType.SchemaMismatch,
+  latency_sla: TriggerType.LatencySla,
 };
 
 export async function submitClaimOnChain(
   callRecord: CallRecord,
   providerHostname: string,
 ): Promise<ClaimSubmissionResult> {
-  const { program, programId, connection } = createSolanaClient(getSolanaConfig());
-
   if (!callRecord.agent_pubkey) {
     throw new Error("Cannot submit on-chain claim: agent_pubkey missing from call record");
   }
 
-  const [protocolPda] = deriveProtocolPda(programId);
-  const [poolPda] = derivePoolPda(programId, providerHostname);
-  const [vaultPda] = deriveVaultPda(programId, poolPda);
-  const agentPubkey = new PublicKey(callRecord.agent_pubkey);
-  const [policyPda] = derivePolicyPda(programId, poolPda, agentPubkey);
+  const config = getSolanaConfig();
+  const client = await createKitSolanaClient(config);
 
-  // Claim PDA seed is sha256(call_id) — the call_id can be any string up to
-  // MAX_CALL_ID_LEN (64 chars). Pass the canonical UUID through unchanged so
-  // DB <-> on-chain cross-reference is trivial.
-  const [claimPda] = deriveClaimPda(programId, policyPda, callRecord.id);
+  const [protocolConfigAddr] = await findProtocolConfigPda();
+  const [poolAddr] = await findCoveragePoolPda(providerHostname);
+  const [vaultAddr] = await findCoveragePoolVaultPda(poolAddr);
+  const agentAddr = address(callRecord.agent_pubkey);
+  const [policyAddr] = await findPolicyPda(poolAddr, agentAddr);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const config: any = await (program.account as any).protocolConfig.fetch(protocolPda);
-  const agentTokenAccount = getAssociatedTokenAddressSync(config.usdcMint, agentPubkey);
+  const callIdHash = Uint8Array.from(
+    createHash("sha256").update(callRecord.id).digest(),
+  );
+  const [claimAddr] = await findClaimPda(policyAddr, callIdHash);
+
+  const configBytes = await kitFetchAccountBytes(client, protocolConfigAddr as string);
+  if (!configBytes) throw new Error("Protocol config account not found");
+  const protocolConfig = decodeProtocolConfig(configBytes);
+
+  const agentPubkeyWeb3 = new PublicKey(callRecord.agent_pubkey);
+  const usdcMintPk = new PublicKey(protocolConfig.usdcMint as string);
+  const agentTokenAccount = getAssociatedTokenAddressSync(usdcMintPk, agentPubkeyWeb3);
+  const agentTokenAccountAddr = address(agentTokenAccount.toBase58());
 
   const triggerType = triggerTypeMap[callRecord.classification];
-  if (!triggerType) {
+  if (triggerType === undefined) {
     throw new Error(`Invalid classification for claim: ${callRecord.classification}`);
   }
 
@@ -77,47 +93,50 @@ export async function submitClaimOnChain(
     latency_ms: callRecord.latency_ms,
     payment_amount: callRecord.payment_amount,
   });
-  const evidenceHash = Array.from(createHash("sha256").update(evidenceRaw).digest());
+  const evidenceHash = Uint8Array.from(createHash("sha256").update(evidenceRaw).digest());
+  const callTimestamp = BigInt(Math.floor(callRecord.created_at.getTime() / 1000));
 
-  const callTimestamp = Math.floor(callRecord.created_at.getTime() / 1000);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sig: string = await (program.methods as any)
-    .submitClaim({
+  const ix = getSubmitClaimInstruction({
+    config: protocolConfigAddr,
+    pool: poolAddr,
+    vault: vaultAddr,
+    policy: policyAddr,
+    claim: claimAddr,
+    agentTokenAccount: agentTokenAccountAddr,
+    oracle: client.oracleSigner,
+    args: {
       callId: callRecord.id,
       triggerType,
       evidenceHash,
-      callTimestamp: new BN(callTimestamp),
+      callTimestamp,
       latencyMs: callRecord.latency_ms,
       statusCode: callRecord.status_code,
-      paymentAmount: new BN(callRecord.payment_amount),
-    })
-    .accounts({
-      config: protocolPda,
-      pool: poolPda,
-      vault: vaultPda,
-      policy: policyPda,
-      claim: claimPda,
-      agentTokenAccount,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      oracle: (program.provider as any).wallet.publicKey,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
-
-  const txInfo = await connection.getTransaction(sig, {
-    commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
+      paymentAmount: BigInt(callRecord.payment_amount),
+    },
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const claim: any = await (program.account as any).claim.fetch(claimPda);
+
+  const sig = await kitSendTx(client, [ix]);
+
+  // Fetch post-tx state to extract refundAmount.
+  const claimBytes = await kitFetchAccountBytes(client, claimAddr as string);
+  if (!claimBytes) throw new Error("Claim account not found after submit");
+  const claim = decodeClaim(claimBytes);
+
+  // Resolve slot from RPC.
+  const txInfo = await (client.rpc as unknown as {
+    getTransaction: (
+      sig: string,
+      opts: { commitment: string; maxSupportedTransactionVersion: number },
+    ) => { send: () => Promise<{ slot?: number } | null> };
+  })
+    .getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 })
+    .send();
 
   return {
     signature: sig,
     slot: txInfo?.slot ?? 0,
-    refundAmount: claim.refundAmount.toNumber(),
-    claimPda: claimPda.toString(),
+    refundAmount: Number(claim.refundAmount),
+    claimPda: claimAddr as string,
   };
 }
 
@@ -126,12 +145,17 @@ export async function hasActiveOnChainPolicy(
   providerHostname: string,
 ): Promise<boolean> {
   try {
-    const { program, programId } = createSolanaClient(getSolanaConfig());
-    const [poolPda] = derivePoolPda(programId, providerHostname);
-    const [policyPda] = derivePolicyPda(programId, poolPda, new PublicKey(agentPubkey));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const policy: any = await (program.account as any).policy.fetch(policyPda);
-    return policy.active;
+    const config = getSolanaConfig();
+    const client = await createKitSolanaClient(config);
+    const [poolAddr] = await findCoveragePoolPda(providerHostname);
+    const agentAddr = address(agentPubkey);
+    const [policyAddr] = await findPolicyPda(poolAddr, agentAddr);
+
+    const { decodePolicy } = generated;
+    const policyBytes = await kitFetchAccountBytes(client, policyAddr as string);
+    if (!policyBytes) return false;
+    const policy = decodePolicy(policyBytes);
+    return policy.active !== 0;
   } catch {
     return false;
   }
