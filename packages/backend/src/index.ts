@@ -12,6 +12,7 @@ import { claimsRoutes } from "./routes/claims.js";
 import { claimsSubmitRoute } from "./routes/claims-submit.js";
 import { poolsRoute } from "./routes/pools.js";
 import { premiumRoutes } from "./routes/premium.js";
+import { sandboxRoutes } from "./routes/sandbox.js";
 import { startCrank } from "./crank/index.js";
 import { adminRoutes } from "./routes/admin.js";
 import { faucetRoutes } from "./routes/faucet.js";
@@ -43,6 +44,11 @@ await app.register(claimsRoutes);
 await app.register(claimsSubmitRoute);
 await app.register(poolsRoute);
 await app.register(premiumRoutes);
+// sandboxRoutes is a devnet-only failure-injection helper (F3). The route
+// itself gates on getCachedNetwork() === "devnet", so registering it on
+// mainnet-deployed instances is safe — every request 403s until network
+// detection reports devnet.
+await app.register(sandboxRoutes);
 await app.register(adminRoutes);
 await app.register(faucetRoutes);
 
