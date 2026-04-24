@@ -47,10 +47,16 @@ WP-1 landed at commit `2524cae` (SBF size 5.4 KiB vs Anchor's 461 KiB). Five dev
 
 ### Addendum from WP-5 (Apr 22, 2026)
 
-10. **CreateAccount CPI is hand-rolled** at `src/system.rs`. No `pinocchio-system` dep added (version conflict with pinocchio 0.10 per #2). The encoder writes a 53-byte System Program payload (u32 discriminant + u64 lamports + u64 space + 32-byte owner). Stable across System Program versions. WP-8 (`create_pool`) revisits when SPL-Token init also needed.
+10. **CreateAccount CPI is hand-rolled** at `src/system.rs`. No `pinocchio-system` dep added (version conflict with pinocchio 0.10 per #2). The encoder writes a 53-byte System Program payload (u32 discriminant + u64 lamports + u64 space + 32-byte owner). Stable across System Program versions. WP-8 (`create_pool`) extended with SPL-Token InitializeAccount3 — see WP-8 addendum #14.
 11. **IDL is hand-written**, not Shank-generated. `packages/program/idl/pact_insurance.json` — WP-5 added instruction 0; each subsequent WP extends the same file (add to `instructions[]`, accounts tables, types). Spec §10 allows this fallback. Cheaper than fighting Shank/Pinocchio-0.10 compat.
 12. **"Codama regen" is manual through WP-15.** `packages/insurance/scripts/codama-generate.mjs` is a stub with `USE_CODAMA = false`. TS client files under `packages/insurance/src/generated/` are HAND-WRITTEN in Codama-style layout (matching `@codama/renderers-js` output). Every WP-6..WP-15 crew: **hand-write** the instruction builder + account decoder + types under the same directory structure. WP-17 flips `USE_CODAMA = true`, runs real Codama against the complete IDL, and reconciles any drift (should be minimal if layout mirrored carefully).
 13. **Test harness split.** Pinocchio-targeting TS tests live under `packages/program/tests-pinocchio/` (new dir, own `tsconfig.json`) and spawn `solana-test-validator` pre-loaded with `pact_insurance_pinocchio.so`. The Anchor test suite at `tests/` is untouched until WP-17. Each instruction WP moves its own tests from `tests/` to `tests-pinocchio/`.
+
+### Addendum from WP-8 (Apr 24, 2026)
+
+14. **SPL Token InitializeAccount3 CPI is hand-rolled** at `src/token.rs` (sibling of `src/system.rs`). Same version-conflict reason — no `pinocchio-token` dep. Instruction data: `[disc=18 u8, owner: [u8; 32]]`. Accounts: `[vault (writable), mint, rent sysvar]`. SPL Token program ID `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`.
+15. **Vault PDA must be owned by `spl_token::ID` at CreateAccount time.** Spec §8.7 footgun. The `create_pool` handler creates the vault with `owner = spl_token::ID`, THEN invokes InitializeAccount3. Do not set owner to our program ID.
+16. **`CoveragePool.vault_bump` is stashed in `_pad_tail[0]`** — WP-8 reused the first byte of the state struct's 6-byte trailing pad instead of adding a named field (WP-3's compile-time size/offset asserts pin the layout). **WP-9 (`deposit`), WP-10 (`withdraw`), WP-12 (`enable_insurance`), WP-14 (`settle_premium`) read `pool._pad_tail[0]` to get the vault bump** for their pool-authority signer seeds. Document this inline in each handler. If Phase 5 F1 lands `reserved: [u8; 64]` on CoveragePool as project-wide convention, the vault_bump can be promoted to a named field inside the reserved pad — re-evaluate then.
 
 ---
 
