@@ -179,9 +179,31 @@ Naming: new Pinocchio crate begins life as `pact_insurance_pinocchio` at `packag
 - **Scope size:** S.
 - **Risk flags:** none novel.
 
-### WP-12: `enable_insurance` (disc 5)
+### WP-11.1: Phase 5 F1 state extension (referrer fields + reserved pad)
 
-- **Scope:** handler per spec §3.6 — first SPL-Token account field reads (mint, owner, delegate, delegated_amount). Preserve seed strategy (agent wallet key, not agent_token_account key — spec §3.6 note). Codama-regen + migrate both `policy.ts` tests + H-05 `enable_insurance rejects expires_at in past`.
+- **Scope:** extend `state.rs` to add Phase 5 Feature 1 fields:
+  - `Policy.referrer: [u8; 32]` (Pubkey, zero-all-bytes = None sentinel — keeps Pod-compatible, avoids `Option` wire mess)
+  - `Policy.referrer_present: u8` (1 = Some, 0 = None — explicit bool since bytemuck doesn't accept bool)
+  - `Policy.referrer_share_bps: u16`
+  - `Policy.reserved: [u8; 64]` — absorbs next referrer-model extension without a migration. PRD-locked.
+  - **CONDITIONAL on Rick Q3:** if approved as project-wide convention, also add `reserved: [u8; 64]` to `ProtocolConfig`, `CoveragePool`, `UnderwriterPosition`, `Claim`. If rejected, only `Policy` gets the pad.
+- Update size/offset compile-time asserts in `state.rs` for changed structs.
+- Update all per-struct `LEN` consts.
+- Update hand-written TS account decoder (`packages/insurance/src/generated/accounts/policy.ts`) to include the new fields.
+- Update IDL: Policy account byte layout + new `Policy` discriminator stays 3 (no change to disc, only byte layout).
+- **No handler code.** WP-12 consumes these fields next.
+- Constants: `pub const MAX_REFERRER_SHARE_BPS: u16 = 3000;` added to `constants.rs`.
+- **Dependencies:** WP-11 merged. Alan has Rick's Q3 answer before this WP begins (affects scope).
+- **Exit criteria:**
+  - All existing Pinocchio tests still green (offset-8 invariant still holds for every struct — the reserved pad does NOT shift the first domain field).
+  - New round-trip test for Policy with non-zero referrer + share_bps populated.
+  - PR body documents Rick Q3 decision and per-struct size deltas.
+- **Scope size:** M.
+- **Risk flags:** this changes `Policy::LEN`. WP-12 (`enable_insurance`) must write into the new layout; the Anchor crate is still at the old layout. `WP-17` cut-over handles the mismatch — DO NOT try to keep Anchor-Policy and Pinocchio-Policy byte-compatible past this WP.
+
+### WP-12: `enable_insurance` (disc 5) — **amended for Phase 5 F1**
+
+- **Scope:** handler per spec §3.6 — first SPL-Token account field reads (mint, owner, delegate, delegated_amount). Preserve seed strategy (agent wallet key, not agent_token_account key — spec §3.6 note). **Phase 5 F1 additions:** `EnableInsuranceArgs` accepts `referrer: [u8; 32]` + `referrer_present: u8` + `referrer_share_bps: u16`. Validation: `referrer_share_bps ≤ MAX_REFERRER_SHARE_BPS` (3000), `referrer_present == 0` ↔ `referrer_share_bps == 0`, `referrer_present == 1` ↔ `referrer_share_bps > 0`. Snapshot into `Policy.referrer`, `Policy.referrer_present`, `Policy.referrer_share_bps` at policy creation. Codama-regen + migrate both `policy.ts` tests + H-05 `enable_insurance rejects expires_at in past` + three new tests (`accepts referrer + share_bps`, `rejects share_bps > 3000`, `rejects None/share_bps mutual-exclusion violations`).
 - **Dependencies:** WP-10 merged (for the `vault_bump` being populated) and WP-9 (position / user-facing state flows debugged). If downstream token-account-layout helper is needed, add it in this WP and share with WP-13/WP-14.
 - **Exit criteria:**
   - `rejects enable_insurance without prior SPL approve`, `enables insurance after SPL approve to pool PDA`, H-05 expires-at-in-past green.
@@ -198,9 +220,14 @@ Naming: new Pinocchio crate begins life as `pact_insurance_pinocchio` at `packag
 - **Scope size:** XS.
 - **Risk flags:** none.
 
-### WP-14: `settle_premium` (disc 7)
+### WP-14: `settle_premium` (disc 7) — **amended for Phase 5 F1 three-way split**
 
-- **Scope:** handler per spec §3.8 — two PDA-signed SPL-Token transfers via delegation, u128-intermediate premium math with saturating u64 cast. Critical: does NOT require `policy.active` (premium-evasion guard — spec §5.8 H-05). Codama-regen + migrate `settlement.ts` both tests + H-05 `settle_premium STILL collects on disabled policy` + `settle_premium rejects expired`.
+- **Scope:** handler per spec §3.8 — PDA-signed SPL-Token transfers via delegation, u128-intermediate premium math with saturating u64 cast. Critical: does NOT require `policy.active` (premium-evasion guard — spec §5.8 H-05). **Phase 5 F1 additions:**
+  - Add `split_premium(premium: u64, treasury_bps: u16, referrer_share_bps: u16) -> (pool_cut, treasury_cut, referrer_cut)` helper function (so future tier logic slots in behind the same call site per PRD line 51).
+  - `settle_premium` now performs up to THREE transfers (pool_cut → pool, treasury_cut → treasury, referrer_cut → referrer ATA). The referrer transfer is conditional on `policy.referrer_present == 1`.
+  - `referrer_token_account: Option<Account>` via `remaining_accounts` convention (PRD line 121). If `policy.referrer_present == 1` and the account is missing OR mismatched (not the referrer's USDC ATA), **FAIL the ix** — do NOT silently drop the referrer cut (PRD line 136 quiet-theft footgun).
+  - Sanity assert: `referrer_cut + treasury_cut ≤ premium` (cheap per PRD line 134).
+  - Codama-regen + migrate `settlement.ts` both tests + H-05 `settle_premium STILL collects on disabled policy` + `settle_premium rejects expired` + NEW Phase 5 tests: `three-way split for policy with referrer`, `two-way split for policy with None referrer`, `rejects settle when referrer ATA missing but policy has referrer`, `rejects settle when referrer ATA wrong owner`.
 - **Dependencies:** WP-13 merged.
 - **Exit criteria:**
   - `settles premium by pulling from agent ATA`, `rejects settle_premium when oracle signer is wrong`, H-05 premium-evasion guard, H-05 rejects expired — all green.
