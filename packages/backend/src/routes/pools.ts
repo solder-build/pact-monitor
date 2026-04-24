@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { createSolanaClient, derivePoolPda, getSolanaConfig } from "../utils/solana.js";
+import { canonicalHostname } from "../utils/hostname.js";
 import { query } from "../db.js";
 
 interface CachedPoolList {
@@ -86,9 +87,15 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const cfg = getConfigOr503(reply);
       if (!cfg) return;
+      let hostname: string;
+      try {
+        hostname = canonicalHostname(request.params.hostname);
+      } catch {
+        return reply.code(400).send({ error: "Invalid hostname" });
+      }
       try {
         const { program, programId } = createSolanaClient(cfg.config);
-        const [poolPda] = derivePoolPda(programId, request.params.hostname);
+        const [poolPda] = derivePoolPda(programId, hostname);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pool: any = await (program.account as any).coveragePool.fetch(poolPda);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,7 +109,7 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
            JOIN providers p ON p.id = c.provider_id
            WHERE c.status = 'settled' AND p.base_url = $1
            ORDER BY c.created_at DESC LIMIT 50`,
-          [request.params.hostname],
+          [hostname],
         );
         return reply.send({
           pool: {

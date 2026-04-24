@@ -11,6 +11,7 @@ import { analyticsRoutes } from "./routes/analytics.js";
 import { claimsRoutes } from "./routes/claims.js";
 import { claimsSubmitRoute } from "./routes/claims-submit.js";
 import { poolsRoute } from "./routes/pools.js";
+import { premiumRoutes } from "./routes/premium.js";
 import { startCrank } from "./crank/index.js";
 import { adminRoutes } from "./routes/admin.js";
 import { faucetRoutes } from "./routes/faucet.js";
@@ -41,6 +42,7 @@ await app.register(analyticsRoutes);
 await app.register(claimsRoutes);
 await app.register(claimsSubmitRoute);
 await app.register(poolsRoute);
+await app.register(premiumRoutes);
 await app.register(adminRoutes);
 await app.register(faucetRoutes);
 
