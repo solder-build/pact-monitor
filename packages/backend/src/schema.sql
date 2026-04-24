@@ -90,6 +90,26 @@ ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'acti
 CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_label ON api_keys(label);
 CREATE INDEX IF NOT EXISTS idx_api_keys_agent_pubkey ON api_keys(agent_pubkey);
 
+-- F1: Referrer revenue share. An api_keys row can (optionally) be linked to
+-- a referrer pubkey; every on-chain policy created from that key captures
+-- the referrer + share_bps at creation time. Hard ceiling of 3000 bps
+-- (30%) enforced at the CHECK; program will mirror the same ceiling.
+-- Nullable: existing keys (pre-F1) have no referrer and settle two-way as
+-- before.
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS referrer_pubkey TEXT NULL;
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS referrer_share_bps INTEGER NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'api_keys_referrer_share_bps_check'
+  ) THEN
+    ALTER TABLE api_keys
+      ADD CONSTRAINT api_keys_referrer_share_bps_check
+      CHECK (referrer_share_bps IS NULL OR (referrer_share_bps >= 0 AND referrer_share_bps <= 3000));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_api_keys_referrer ON api_keys(referrer_pubkey) WHERE referrer_pubkey IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS claims (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   call_record_id  UUID NOT NULL REFERENCES call_records(id),
@@ -110,6 +130,15 @@ CREATE INDEX IF NOT EXISTS idx_claims_provider_id ON claims(provider_id);
 CREATE INDEX IF NOT EXISTS idx_claims_agent_id ON claims(agent_id);
 CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
 CREATE INDEX IF NOT EXISTS idx_claims_created_at ON claims(created_at);
+
+-- F1: denormalized referrer for fast partner reads. Populated by the
+-- policy-creation flow (when the on-chain fields land) + mirrored from the
+-- api_keys.referrer_pubkey snapshot at claim time so the partners endpoint
+-- avoids a JOIN back to api_keys. Partial index keeps it small until the
+-- on-chain fields ship.
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS referrer_pubkey TEXT NULL;
+CREATE INDEX IF NOT EXISTS idx_claims_referrer
+  ON claims(referrer_pubkey) WHERE referrer_pubkey IS NOT NULL;
 
 -- Audit trail for /api/v1/faucet/drip. Not used for enforcement (rate limit
 -- lives in @fastify/rate-limit), just a record of who got what and when so we

@@ -6,6 +6,7 @@ import {
 } from "../services/claim-settlement.js";
 import { query } from "../db.js";
 import { requireApiKey } from "../middleware/auth.js";
+import { canonicalHostname } from "../utils/hostname.js";
 
 interface CallRecordRow {
   id: string;
@@ -29,6 +30,18 @@ export async function claimsSubmitRoute(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({
           error: "callRecordId and providerHostname are required",
         });
+      }
+
+      // The provider row's base_url is stored in canonical form (F2). SDK
+      // clients may still send mixed-case or URL-with-path, so canonicalize
+      // the incoming value before the equality check against api_provider.
+      // TODO(F2 follow-up): trailing-dot variants (foo.com vs foo.com.) still
+      // split into separate pools — see review flag #2.
+      let canonicalProviderHostname: string;
+      try {
+        canonicalProviderHostname = canonicalHostname(providerHostname);
+      } catch {
+        return reply.code(400).send({ error: "Invalid providerHostname" });
       }
 
       const result = await query<CallRecordRow>(
@@ -56,14 +69,14 @@ export async function claimsSubmitRoute(app: FastifyInstance): Promise<void> {
       if (authed.agentId !== row.agent_id) {
         return reply.code(403).send({ error: "Forbidden" });
       }
-      if (providerHostname !== row.api_provider) {
+      if (canonicalProviderHostname !== row.api_provider) {
         return reply.code(400).send({ error: "providerHostname does not match call record" });
       }
       if (!row.agent_pubkey) {
         return reply.code(400).send({ error: "Call record missing agent_pubkey" });
       }
 
-      const hasPolicy = await hasActiveOnChainPolicy(row.agent_pubkey, providerHostname);
+      const hasPolicy = await hasActiveOnChainPolicy(row.agent_pubkey, canonicalProviderHostname);
       if (!hasPolicy) {
         return reply.code(404).send({
           error: "No active on-chain policy for this agent/provider",
@@ -83,7 +96,7 @@ export async function claimsSubmitRoute(app: FastifyInstance): Promise<void> {
       };
 
       try {
-        const settlement = await submitClaimOnChain(callRecord, providerHostname);
+        const settlement = await submitClaimOnChain(callRecord, canonicalProviderHostname);
         await query(
           `UPDATE claims
            SET tx_hash = $1,

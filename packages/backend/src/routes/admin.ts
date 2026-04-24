@@ -275,6 +275,76 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
+  // F1: register a referrer on an existing api_keys row. Admin-token gated
+  // (inherited from the onRequest hook above). Writes referrer_pubkey +
+  // referrer_share_bps atomically so the two columns never disagree.
+  //
+  // Scope: MAX_REFERRER_SHARE_BPS = 3000 (30%). Nulling both is allowed
+  // (clears the referrer). Passing one without the other is a 400 — the
+  // DB CHECK + callers both assume they're written as a pair.
+  app.patch<{
+    Params: { label: string };
+    Body: {
+      referrer_pubkey: string | null;
+      referrer_share_bps: number | null;
+    };
+  }>("/api/v1/admin/api-keys/:label/referrer", async (request, reply) => {
+    const { label } = request.params;
+    const { referrer_pubkey, referrer_share_bps } = request.body ?? {
+      referrer_pubkey: null,
+      referrer_share_bps: null,
+    };
+
+    const clearing = referrer_pubkey === null && referrer_share_bps === null;
+    const registering =
+      typeof referrer_pubkey === "string" && typeof referrer_share_bps === "number";
+    if (!clearing && !registering) {
+      return reply.code(400).send({
+        error: "referrer_pubkey and referrer_share_bps must both be set (register) or both null (clear)",
+      });
+    }
+
+    if (registering) {
+      if (referrer_pubkey!.length < 32 || referrer_pubkey!.length > 48) {
+        return reply.code(400).send({
+          error: "referrer_pubkey is not a plausible Solana pubkey",
+        });
+      }
+      if (
+        !Number.isInteger(referrer_share_bps) ||
+        (referrer_share_bps as number) < 0 ||
+        (referrer_share_bps as number) > 3000
+      ) {
+        return reply.code(400).send({
+          error: "referrer_share_bps must be an integer in [0, 3000] (30% hard ceiling)",
+        });
+      }
+    }
+
+    // Atomic write: a single UPDATE sets both columns, so an observer never
+    // sees a half-configured row.
+    const result = await query<{
+      label: string;
+      referrer_pubkey: string | null;
+      referrer_share_bps: number | null;
+    }>(
+      `UPDATE api_keys
+         SET referrer_pubkey = $1,
+             referrer_share_bps = $2
+         WHERE label = $3
+         RETURNING label, referrer_pubkey, referrer_share_bps`,
+      [referrer_pubkey, referrer_share_bps, label],
+    );
+    if (result.rows.length === 0) {
+      return reply.code(404).send({ error: "API key label not found" });
+    }
+    return reply.send({
+      label: result.rows[0].label,
+      referrer_pubkey: result.rows[0].referrer_pubkey,
+      referrer_share_bps: result.rows[0].referrer_share_bps,
+    });
+  });
+
   // ── Flags ──────────────────────────────────────────────
   app.get("/api/v1/admin/flags", async (request, reply) => {
     const { status } = request.query as { status?: string };
