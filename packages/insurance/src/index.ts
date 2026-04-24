@@ -10,7 +10,9 @@ export type {
   LowBalanceEvent,
 } from "./types.js";
 
-// Codama-TS client surface (Pinocchio port — WP-5 onward). Exposed under an
-// explicit namespace so existing Anchor-based exports above stay intact; the
-// WP-17 cut-over will fold this in as the primary surface.
+// Codama-TS client surface (Pinocchio primary transport as of WP-17).
 export * as generated from "./generated/index.js";
+
+// Legacy Anchor transport — retained as rollback fallback (WP-17 scope change,
+// Alan 2026-04-24). Not the default. Accessible for emergency use or testing.
+export * as legacyAnchorClient from "./legacy-anchor-client.js";

@@ -405,6 +405,78 @@
       }
     },
     {
+      "name": "submitClaim",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Writable (totalClaimsPaid, payoutsThisWindow)."]
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token vault PDA — seeds = [\"vault\", pool]. Source of the refund transfer."]
+        },
+        {
+          "name": "policy",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Policy PDA — seeds = [\"policy\", pool, agent]. Must be active + unexpired."]
+        },
+        {
+          "name": "claim",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Claim PDA — seeds = [\"claim\", policy, sha256(callId)]. Created by this instruction."]
+        },
+        {
+          "name": "agentTokenAccount",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Agent ATA — refund payee; must equal policy.agentTokenAccount."]
+        },
+        {
+          "name": "oracle",
+          "isMut": true,
+          "isSigner": true,
+          "docs": ["Oracle signer; key must equal config.oracle. Pays claim PDA rent."]
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL Token Program — `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`."]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["System Program — `11111111111111111111111111111111`."]
+        }
+      ],
+      "args": [
+        { "name": "callId", "type": "string" },
+        { "name": "triggerType", "type": "u8" },
+        { "name": "evidenceHash", "type": { "array": ["u8", 32] } },
+        { "name": "callTimestamp", "type": "i64" },
+        { "name": "latencyMs", "type": "u32" },
+        { "name": "statusCode", "type": "u16" },
+        { "name": "paymentAmount", "type": "u64" }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 10
+      }
+    },
+    {
       "name": "settlePremium",
       "accounts": [
         {
