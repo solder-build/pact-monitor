@@ -1,9 +1,22 @@
 import type { FastifyInstance } from "fastify";
+import { address } from "@solana/kit";
+import { generated } from "@pact-network/insurance";
+const {
+  decodeProtocolConfig,
+  decodeCoveragePool,
+  getCoveragePoolHostname,
+  findProtocolConfigPda,
+  getUpdateRatesInstruction,
+} = generated;
 import {
-  createSolanaClient,
-  deriveProtocolPda,
+  createKitSolanaClient,
   getSolanaConfig,
 } from "../utils/solana.js";
+import {
+  kitFetchAccountBytes,
+  kitGetProgramAccounts,
+  kitSendTx,
+} from "../utils/kit-rpc.js";
 import { query } from "../db.js";
 import { computeInsuranceRate } from "../utils/insurance.js";
 
@@ -16,31 +29,45 @@ const MIN_CHANGE_BPS = 5;
 const MIN_RATE_BPS = 25;
 const MAX_RATE_BPS = 5000;
 
-// Minimum call_records needed in the observation window before we trust
-// the failure rate enough to push a new rate on-chain. Below this, we
-// keep the existing rate. Prevents "1 failed call -> 5000 bps" pathologies.
-// Tune upward for production (e.g. 200+); this floor is pragmatic for
-// devnet/dev environments with low traffic.
+// Minimum call_records needed before trusting the failure rate.
 const MIN_SAMPLE_SIZE = 10;
+
+export const COVERAGE_POOL_DISCRIMINATOR_BYTE = 1;
 
 /**
  * Rate updater: recomputes each pool's insurance_rate_bps from observed
  * failure rates in the recent window, and calls update_rates on-chain when
- * the delta exceeds MIN_CHANGE_BPS to avoid noisy updates.
+ * the delta exceeds MIN_CHANGE_BPS.
  */
 export async function runRateUpdater(app: FastifyInstance): Promise<void> {
-  const { program, programId, oracleKeypair } = createSolanaClient(getSolanaConfig());
-  const [protocolPda] = deriveProtocolPda(programId);
+  const config = getSolanaConfig();
+  const client = await createKitSolanaClient(config);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pools: any[] = await (program.account as any).coveragePool.all();
-  app.log.debug({ poolCount: pools.length }, "Rate updater: fetched pools");
+  const [protocolConfigAddr] = await findProtocolConfigPda();
+  const configBytes = await kitFetchAccountBytes(client, protocolConfigAddr as string);
+  if (!configBytes) {
+    app.log.warn("Rate updater: protocol config not found");
+    return;
+  }
+  decodeProtocolConfig(configBytes); // validates decoding without crashing
 
-  for (const pool of pools) {
-    const hostname: string = pool.account.providerHostname;
-    const currentRateBps: number = pool.account.insuranceRateBps;
+  const poolAccounts = await kitGetProgramAccounts(client, [
+    { memcmp: { offset: 0, bytes: Buffer.from([COVERAGE_POOL_DISCRIMINATOR_BYTE]).toString("base64"), encoding: "base64" } },
+  ]);
+  app.log.debug({ poolCount: poolAccounts.length }, "Rate updater: fetched pools");
 
-    // Observed failure rate over the last hour.
+  for (const acct of poolAccounts) {
+    let pool: ReturnType<typeof decodeCoveragePool>;
+    try {
+      pool = decodeCoveragePool(acct.data);
+    } catch {
+      continue;
+    }
+
+    const hostname = getCoveragePoolHostname(pool);
+    const currentRateBps: number = pool.insuranceRateBps;
+    const poolAddr = address(acct.pubkey);
+
     const result = await query<FailureStatsRow>(
       `SELECT
          COUNT(*)::text AS total,
@@ -78,15 +105,13 @@ export async function runRateUpdater(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sig: string = await (program.methods as any)
-        .updateRates(proposedBps)
-        .accounts({
-          config: protocolPda,
-          pool: pool.publicKey,
-          oracle: oracleKeypair.publicKey,
-        })
-        .rpc();
+      const ix = getUpdateRatesInstruction({
+        config: protocolConfigAddr,
+        pool: poolAddr,
+        oracleSigner: client.oracleSigner,
+        newRateBps: proposedBps,
+      });
+      const sig = await kitSendTx(client, [ix]);
       app.log.info(
         { hostname, from: currentRateBps, to: proposedBps, sig },
         "Insurance rate updated",

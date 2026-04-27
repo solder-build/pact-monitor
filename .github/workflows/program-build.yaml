@@ -1,0 +1,85 @@
+name: Program Build
+
+on:
+  push:
+    branches: [main, develop, "migrate/**", "feat/**", "fix/**"]
+    paths:
+      - "packages/program/**"
+      - ".github/workflows/program-build.yaml"
+  pull_request:
+    paths:
+      - "packages/program/**"
+      - ".github/workflows/program-build.yaml"
+
+jobs:
+  build-pinocchio:
+    name: Build Pinocchio (default)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust + SBF toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/program/target
+          key: ${{ runner.os }}-cargo-pinocchio-${{ hashFiles('packages/program/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-pinocchio-
+
+      - name: Install cargo-build-sbf
+        run: |
+          if ! command -v cargo-build-sbf &>/dev/null; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+            echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Build Pinocchio crate
+        working-directory: packages/program
+        run: |
+          cargo build-sbf \
+            --manifest-path programs-pinocchio/pact-insurance-pinocchio/Cargo.toml \
+            --features bpf-entrypoint
+
+      - name: Record binary size
+        working-directory: packages/program
+        run: |
+          SO=target/deploy/pact_insurance_pinocchio.so
+          SIZE=$(stat -c%s "$SO" 2>/dev/null || stat -f%z "$SO")
+          echo "Pinocchio binary: ${SIZE} bytes ($(( SIZE / 1024 )) KiB)"
+
+  legacy-anchor-build:
+    name: Legacy Anchor build (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/program/target
+          key: ${{ runner.os }}-cargo-anchor-${{ hashFiles('packages/program/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-anchor-
+
+      - name: Install Solana + Anchor CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked || true
+
+      - name: Build Anchor legacy crate (informational — non-blocking)
+        working-directory: packages/program
+        run: anchor build

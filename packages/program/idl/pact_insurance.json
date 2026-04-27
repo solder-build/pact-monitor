@@ -1,0 +1,797 @@
+{
+  "version": "0.1.0",
+  "name": "pact_insurance",
+  "instructions": [
+    {
+      "name": "initializeProtocol",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "docs": [
+            "Protocol config PDA derived from seeds = [\"protocol\"]. Created by this instruction."
+          ]
+        },
+        {
+          "name": "deployer",
+          "isMut": true,
+          "isSigner": true,
+          "docs": ["Fee payer that funds the PDA creation. Signs the transaction."]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["System Program — `11111111111111111111111111111111`."]
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": "InitializeProtocolArgs"
+          }
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 0
+      }
+    },
+    {
+      "name": "updateConfig",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "docs": [
+            "Protocol config PDA — seeds = [\"protocol\"]. Loaded and mutated in place."
+          ]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Must match `config.authority` (has_one in Anchor source)."]
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": "UpdateConfigArgs"
+          }
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 1
+      }
+    },
+    {
+      "name": "updateOracle",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "docs": [
+            "Protocol config PDA — seeds = [\"protocol\"]. Loaded and mutated in place."
+          ]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Must match `config.authority` (has_one in Anchor source)."]
+        }
+      ],
+      "args": [
+        {
+          "name": "newOracle",
+          "type": "publicKey"
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 2
+      }
+    },
+    {
+      "name": "createPool",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Created by this instruction."]
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token vault PDA — seeds = [\"vault\", pool]. Created owned by the Token Program; authority = pool."]
+        },
+        {
+          "name": "poolUsdcMint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["USDC mint. Handler enforces equality with `config.usdcMint` (Unauthorized 6018 otherwise)."]
+        },
+        {
+          "name": "authority",
+          "isMut": true,
+          "isSigner": true,
+          "docs": ["Protocol authority; must match `config.authority`. Pays rent."]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["System Program — `11111111111111111111111111111111`."]
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL Token Program — `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`."]
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Rent sysvar. Kept for account-list compatibility with the Anchor builder; unused by the handler."]
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": "CreatePoolArgs"
+          }
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 3
+      }
+    },
+    {
+      "name": "deposit",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]."]
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token vault PDA — seeds = [\"vault\", pool]. Destination of the transfer."]
+        },
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Underwriter position PDA — seeds = [\"position\", pool, underwriter]. init_if_needed; handler branches on is_data_empty."]
+        },
+        {
+          "name": "underwriterTokenAccount",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token account source of the transfer. mint must equal pool.usdcMint; owner must equal underwriter."]
+        },
+        {
+          "name": "underwriter",
+          "isMut": true,
+          "isSigner": true,
+          "docs": ["Underwriter wallet. Signs the transfer and pays rent for position init."]
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL Token Program — `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`."]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["System Program — `11111111111111111111111111111111`."]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 4
+      }
+    },
+    {
+      "name": "updateRates",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only; source of `oracle` for the signer check."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Mutated in place (insuranceRateBps, updatedAt)."]
+        },
+        {
+          "name": "oracleSigner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Must match `config.oracle`. Handler rejects with UnauthorizedOracle (6025) otherwise. Dedicated oracle crank signer — admin authority stays cold."]
+        }
+      ],
+      "args": [
+        {
+          "name": "newRateBps",
+          "type": "u16"
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 9
+      }
+    },
+    {
+      "name": "enableInsurance",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Writable (active_policies, updated_at)."]
+        },
+        {
+          "name": "policy",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Policy PDA — seeds = [\"policy\", pool, agent (wallet)]. Created by this instruction."]
+        },
+        {
+          "name": "agentTokenAccount",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL-Token account. mint == config.usdcMint; owner == agent; delegate == pool; delegated_amount > 0."]
+        },
+        {
+          "name": "agent",
+          "isMut": true,
+          "isSigner": true,
+          "docs": ["Agent wallet. Tx signer; pays policy PDA rent. Spec §3.6 seed rule: WALLET pubkey, not agent_token_account."]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["System Program — `11111111111111111111111111111111`."]
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": "EnableInsuranceArgs"
+          }
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 5
+      }
+    },
+    {
+      "name": "disablePolicy",
+      "accounts": [
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Writable (active_policies saturating_sub 1)."]
+        },
+        {
+          "name": "policy",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Policy PDA — seeds = [\"policy\", pool, agent]. Writable (active flipped to 0)."]
+        },
+        {
+          "name": "agent",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Agent wallet. Must match `policy.agent` (has_one). No rent payment — read-only signer."]
+        }
+      ],
+      "args": [],
+      "discriminant": {
+        "type": "u8",
+        "value": 6
+      }
+    },
+    {
+      "name": "withdraw",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Signer of the token Transfer via pool_signer_seeds."]
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token vault PDA — seeds = [\"vault\", pool]. Source of the transfer; authority = pool."]
+        },
+        {
+          "name": "position",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Underwriter position PDA — seeds = [\"position\", pool, underwriter]. Cooldown gate reads position.depositTimestamp."]
+        },
+        {
+          "name": "underwriterTokenAccount",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token account destination of the transfer. mint must equal pool.usdcMint; owner must equal underwriter."]
+        },
+        {
+          "name": "underwriter",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Underwriter wallet. Tx signer; does NOT sign the Transfer CPI — the pool PDA signs via invoke_signed."]
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL Token Program — `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`."]
+        },
+        {
+          "name": "clock",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Clock sysvar — `SysvarC1ock11111111111111111111111111111111`. Handler reads via `Clock::get()`; kept in account list for wire parity."]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 8
+      }
+    },
+    {
+      "name": "submitClaim",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Writable (totalClaimsPaid, payoutsThisWindow)."]
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token vault PDA — seeds = [\"vault\", pool]. Source of the refund transfer."]
+        },
+        {
+          "name": "policy",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Policy PDA — seeds = [\"policy\", pool, agent]. Must be active + unexpired."]
+        },
+        {
+          "name": "claim",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Claim PDA — seeds = [\"claim\", policy, sha256(callId)]. Created by this instruction."]
+        },
+        {
+          "name": "agentTokenAccount",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Agent ATA — refund payee; must equal policy.agentTokenAccount."]
+        },
+        {
+          "name": "oracle",
+          "isMut": true,
+          "isSigner": true,
+          "docs": ["Oracle signer; key must equal config.oracle. Pays claim PDA rent."]
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL Token Program — `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`."]
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["System Program — `11111111111111111111111111111111`."]
+        }
+      ],
+      "args": [
+        { "name": "callId", "type": "string" },
+        { "name": "triggerType", "type": "u8" },
+        { "name": "evidenceHash", "type": { "array": ["u8", 32] } },
+        { "name": "callTimestamp", "type": "i64" },
+        { "name": "latencyMs", "type": "u32" },
+        { "name": "statusCode", "type": "u16" },
+        { "name": "paymentAmount", "type": "u64" }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 10
+      }
+    },
+    {
+      "name": "settlePremium",
+      "accounts": [
+        {
+          "name": "config",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Protocol config PDA — seeds = [\"protocol\"]. Read-only; supplies oracle / treasury / protocolFeeBps / usdcMint."]
+        },
+        {
+          "name": "pool",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Coverage pool PDA — seeds = [\"pool\", providerHostname]. Signs all Transfer CPIs via pool_signer_seeds."]
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token vault PDA — seeds = [\"vault\", pool]. Destination of pool_cut; authority = pool."]
+        },
+        {
+          "name": "policy",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Policy PDA — seeds = [\"policy\", pool, agent]. H-05 premium-evasion guard: `active` is NOT required; only `expires_at` is enforced."]
+        },
+        {
+          "name": "treasuryAta",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["SPL-Token account owned by config.treasury. Mint must equal config.usdcMint. Receives protocol_fee_bps cut."]
+        },
+        {
+          "name": "agentAta",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["Agent's SPL-Token account. Delegate must be the pool PDA; mint must equal pool.usdcMint. Source of every transfer."]
+        },
+        {
+          "name": "oracleSigner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["Oracle signer — key must equal config.oracle. Crank-driven authority (C-02)."]
+        },
+        {
+          "name": "tokenProgram",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["SPL Token Program — `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`."]
+        }
+      ],
+      "args": [
+        {
+          "name": "callValue",
+          "type": "u64"
+        }
+      ],
+      "discriminant": {
+        "type": "u8",
+        "value": 7
+      },
+      "docs": [
+        "Phase 5 F1: when policy.referrerPresent == 1, pass the referrer's USDC ATA as the first entry in remaining_accounts (position 8). Owner must equal policy.referrer; mint must equal config.usdcMint. Missing or mismatched fails LOUD with TokenAccountMismatch (6005)."
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ProtocolConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "discriminator", "type": "u8" },
+          { "name": "pad", "type": { "array": ["u8", 7] } },
+          { "name": "authority", "type": "publicKey" },
+          { "name": "oracle", "type": "publicKey" },
+          { "name": "treasury", "type": "publicKey" },
+          { "name": "usdcMint", "type": "publicKey" },
+          { "name": "minPoolDeposit", "type": "u64" },
+          { "name": "defaultMaxCoveragePerCall", "type": "u64" },
+          { "name": "withdrawalCooldownSeconds", "type": "i64" },
+          { "name": "aggregateCapWindowSeconds", "type": "i64" },
+          { "name": "claimWindowSeconds", "type": "i64" },
+          { "name": "protocolFeeBps", "type": "u16" },
+          { "name": "defaultInsuranceRateBps", "type": "u16" },
+          { "name": "minPremiumBps", "type": "u16" },
+          { "name": "aggregateCapBps", "type": "u16" },
+          { "name": "maxClaimsPerBatch", "type": "u8" },
+          { "name": "paused", "type": "u8" },
+          { "name": "bump", "type": "u8" },
+          { "name": "padTail", "type": { "array": ["u8", 5] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
+        ]
+      }
+    },
+    {
+      "name": "CoveragePool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "discriminator", "type": "u8" },
+          { "name": "pad", "type": { "array": ["u8", 7] } },
+          { "name": "authority", "type": "publicKey" },
+          { "name": "usdcMint", "type": "publicKey" },
+          { "name": "vault", "type": "publicKey" },
+          { "name": "providerHostname", "type": { "array": ["u8", 64] } },
+          { "name": "totalDeposited", "type": "u64" },
+          { "name": "totalAvailable", "type": "u64" },
+          { "name": "totalPremiumsEarned", "type": "u64" },
+          { "name": "totalClaimsPaid", "type": "u64" },
+          { "name": "maxCoveragePerCall", "type": "u64" },
+          { "name": "payoutsThisWindow", "type": "u64" },
+          { "name": "windowStart", "type": "i64" },
+          { "name": "createdAt", "type": "i64" },
+          { "name": "updatedAt", "type": "i64" },
+          { "name": "activePolicies", "type": "u32" },
+          { "name": "insuranceRateBps", "type": "u16" },
+          { "name": "minPremiumBps", "type": "u16" },
+          { "name": "providerHostnameLen", "type": "u8" },
+          { "name": "bump", "type": "u8" },
+          { "name": "padTail", "type": { "array": ["u8", 6] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
+        ]
+      }
+    },
+    {
+      "name": "UnderwriterPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "discriminator", "type": "u8" },
+          { "name": "pad", "type": { "array": ["u8", 7] } },
+          { "name": "pool", "type": "publicKey" },
+          { "name": "underwriter", "type": "publicKey" },
+          { "name": "deposited", "type": "u64" },
+          { "name": "earnedPremiums", "type": "u64" },
+          { "name": "lossesAbsorbed", "type": "u64" },
+          { "name": "depositTimestamp", "type": "i64" },
+          { "name": "lastClaimTimestamp", "type": "i64" },
+          { "name": "bump", "type": "u8" },
+          { "name": "padTail", "type": { "array": ["u8", 7] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
+        ]
+      }
+    },
+    {
+      "name": "Policy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "discriminator", "type": "u8" },
+          { "name": "pad", "type": { "array": ["u8", 7] } },
+          { "name": "agent", "type": "publicKey" },
+          { "name": "pool", "type": "publicKey" },
+          { "name": "agentTokenAccount", "type": "publicKey" },
+          { "name": "agentId", "type": { "array": ["u8", 64] } },
+          { "name": "totalPremiumsPaid", "type": "u64" },
+          { "name": "totalClaimsReceived", "type": "u64" },
+          { "name": "callsCovered", "type": "u64" },
+          { "name": "createdAt", "type": "i64" },
+          { "name": "expiresAt", "type": "i64" },
+          { "name": "agentIdLen", "type": "u8" },
+          { "name": "active", "type": "u8" },
+          { "name": "bump", "type": "u8" },
+          { "name": "padTail", "type": { "array": ["u8", 5] } },
+          { "name": "referrer", "type": { "array": ["u8", 32] } },
+          { "name": "referrerShareBps", "type": "u16" },
+          { "name": "referrerPresent", "type": "u8" },
+          { "name": "padReferrer", "type": { "array": ["u8", 5] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
+        ]
+      }
+    },
+    {
+      "name": "Claim",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "discriminator", "type": "u8" },
+          { "name": "pad", "type": { "array": ["u8", 7] } },
+          { "name": "policy", "type": "publicKey" },
+          { "name": "pool", "type": "publicKey" },
+          { "name": "agent", "type": "publicKey" },
+          { "name": "callId", "type": { "array": ["u8", 32] } },
+          { "name": "evidenceHash", "type": { "array": ["u8", 32] } },
+          { "name": "paymentAmount", "type": "u64" },
+          { "name": "refundAmount", "type": "u64" },
+          { "name": "callTimestamp", "type": "i64" },
+          { "name": "createdAt", "type": "i64" },
+          { "name": "resolvedAt", "type": "i64" },
+          { "name": "latencyMs", "type": "u32" },
+          { "name": "statusCode", "type": "u16" },
+          { "name": "triggerType", "type": "u8" },
+          { "name": "status", "type": "u8" },
+          { "name": "bump", "type": "u8" },
+          { "name": "padTail", "type": { "array": ["u8", 7] } },
+          { "name": "reserved", "type": { "array": ["u8", 64] } }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "InitializeProtocolArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "oracle", "type": "publicKey" },
+          { "name": "treasury", "type": "publicKey" },
+          { "name": "usdcMint", "type": "publicKey" }
+        ]
+      }
+    },
+    {
+      "name": "UpdateConfigArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "protocolFeeBps", "type": { "option": "u16" } },
+          { "name": "minPoolDeposit", "type": { "option": "u64" } },
+          { "name": "defaultInsuranceRateBps", "type": { "option": "u16" } },
+          { "name": "defaultMaxCoveragePerCall", "type": { "option": "u64" } },
+          { "name": "minPremiumBps", "type": { "option": "u16" } },
+          { "name": "withdrawalCooldownSeconds", "type": { "option": "i64" } },
+          { "name": "aggregateCapBps", "type": { "option": "u16" } },
+          { "name": "aggregateCapWindowSeconds", "type": { "option": "i64" } },
+          { "name": "claimWindowSeconds", "type": { "option": "i64" } },
+          { "name": "maxClaimsPerBatch", "type": { "option": "u8" } },
+          { "name": "paused", "type": { "option": "bool" } },
+          { "name": "treasury", "type": { "option": "publicKey" } },
+          { "name": "usdcMint", "type": { "option": "publicKey" } }
+        ]
+      }
+    },
+    {
+      "name": "CreatePoolArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "providerHostname", "type": "string" },
+          { "name": "insuranceRateBps", "type": { "option": "u16" } },
+          { "name": "maxCoveragePerCall", "type": { "option": "u64" } }
+        ]
+      }
+    },
+    {
+      "name": "EnableInsuranceArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "agentId", "type": "string" },
+          { "name": "expiresAt", "type": "i64" },
+          { "name": "referrer", "type": { "array": ["u8", 32] } },
+          { "name": "referrerPresent", "type": "u8" },
+          { "name": "referrerShareBps", "type": "u16" }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "ProtocolPaused",
+      "msg": "Protocol is paused."
+    },
+    {
+      "code": 6015,
+      "name": "HostnameTooLong",
+      "msg": "Provider hostname exceeds the 64-byte on-disk limit."
+    },
+    {
+      "code": 6018,
+      "name": "Unauthorized",
+      "msg": "Signer is not the config authority."
+    },
+    {
+      "code": 6022,
+      "name": "ConfigSafetyFloorViolation",
+      "msg": "New config value violates absolute floor/cap."
+    },
+    {
+      "code": 6024,
+      "name": "UnauthorizedDeployer",
+      "msg": "Deployer signer does not match DEPLOYER_PUBKEY."
+    },
+    {
+      "code": 6026,
+      "name": "FrozenConfigField",
+      "msg": "treasury and usdc_mint are frozen after initialize_protocol."
+    },
+    {
+      "code": 6025,
+      "name": "UnauthorizedOracle",
+      "msg": "Signer is not the config oracle."
+    },
+    {
+      "code": 6027,
+      "name": "RateOutOfBounds",
+      "msg": "New insurance rate exceeds the 10_000 bps (100%) cap."
+    },
+    {
+      "code": 6028,
+      "name": "RateBelowFloor",
+      "msg": "New insurance rate is below pool.min_premium_bps."
+    },
+    {
+      "code": 6030,
+      "name": "InvalidOracleKey",
+      "msg": "New oracle key is invalid (zero or equals authority)."
+    }
+  ],
+  "metadata": {
+    "address": "2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3",
+    "origin": "shank-fallback",
+    "note": "Hand-written Shank-flavoured IDL. WP-5 bootstraps the Codama TS client surface with a one-instruction IDL; later WPs extend `instructions` / `accounts` as each handler lands. Shank CLI not installed locally (no npm package; cargo install shank-cli pending pinocchio 0.10 compat check), so we fall back to the hand-authored IDL per spec §10."
+  }
+}

@@ -1,5 +1,23 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { createSolanaClient, derivePoolPda, getSolanaConfig } from "../utils/solana.js";
+import { address } from "@solana/kit";
+import { generated } from "@pact-network/insurance";
+const {
+  decodeCoveragePool,
+  decodeUnderwriterPosition,
+  getCoveragePoolHostname,
+  findCoveragePoolPda,
+  COVERAGE_POOL_DISCRIMINATOR,
+  UNDERWRITER_POSITION_DISCRIMINATOR,
+} = generated;
+import {
+  createKitSolanaClient,
+  getSolanaConfig,
+  type SolanaConfig,
+} from "../utils/solana.js";
+import {
+  kitFetchAccountBytes,
+  kitGetProgramAccounts,
+} from "../utils/kit-rpc.js";
 import { query } from "../db.js";
 
 interface CachedPoolList {
@@ -22,7 +40,7 @@ interface ClaimRow {
   created_at: Date;
 }
 
-function getConfigOr503(reply: FastifyReply) {
+function getConfigOr503(reply: FastifyReply): { config: SolanaConfig } | null {
   try {
     return { config: getSolanaConfig() };
   } catch (err) {
@@ -37,9 +55,6 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
     const cfg = getConfigOr503(reply);
     if (!cfg) return;
 
-    // Cache is scoped to the (programId, rpcUrl) tuple. If either changes
-    // at runtime (e.g. program redeploy in Task 12), the cached payload
-    // belongs to a different network and must be invalidated.
     if (
       poolListCache &&
       poolListCache.programId === cfg.config.programId &&
@@ -50,23 +65,38 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const { program } = createSolanaClient(cfg.config);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pools = await (program.account as any).coveragePool.all();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = pools.map((p: any) => ({
-        hostname: p.account.providerHostname,
-        pda: p.publicKey.toString(),
-        totalDeposited: p.account.totalDeposited.toString(),
-        totalAvailable: p.account.totalAvailable.toString(),
-        totalPremiumsEarned: p.account.totalPremiumsEarned.toString(),
-        totalClaimsPaid: p.account.totalClaimsPaid.toString(),
-        insuranceRateBps: p.account.insuranceRateBps,
-        maxCoveragePerCall: p.account.maxCoveragePerCall.toString(),
-        activePolicies: p.account.activePolicies,
-        payoutsThisWindow: p.account.payoutsThisWindow.toString(),
-        windowStart: p.account.windowStart.toString(),
-      }));
+      const client = await createKitSolanaClient(cfg.config);
+      const poolAccounts = await kitGetProgramAccounts(client, [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: Buffer.from([COVERAGE_POOL_DISCRIMINATOR]).toString("base64"),
+            encoding: "base64",
+          },
+        },
+      ]);
+
+      const result = poolAccounts.flatMap((acct) => {
+        try {
+          const pool = decodeCoveragePool(acct.data);
+          return [{
+            hostname: getCoveragePoolHostname(pool),
+            pda: acct.pubkey,
+            totalDeposited: pool.totalDeposited.toString(),
+            totalAvailable: pool.totalAvailable.toString(),
+            totalPremiumsEarned: pool.totalPremiumsEarned.toString(),
+            totalClaimsPaid: pool.totalClaimsPaid.toString(),
+            insuranceRateBps: pool.insuranceRateBps,
+            maxCoveragePerCall: pool.maxCoveragePerCall.toString(),
+            activePolicies: pool.activePolicies,
+            payoutsThisWindow: pool.payoutsThisWindow.toString(),
+            windowStart: pool.windowStart.toString(),
+          }];
+        } catch {
+          return [];
+        }
+      });
+
       const payload = { pools: result };
       poolListCache = {
         cachedAt: Date.now(),
@@ -87,14 +117,48 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
       const cfg = getConfigOr503(reply);
       if (!cfg) return;
       try {
-        const { program, programId } = createSolanaClient(cfg.config);
-        const [poolPda] = derivePoolPda(programId, request.params.hostname);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pool: any = await (program.account as any).coveragePool.fetch(poolPda);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const positions = await (program.account as any).underwriterPosition.all([
-          { memcmp: { offset: 8, bytes: poolPda.toBase58() } },
+        const client = await createKitSolanaClient(cfg.config);
+        const [poolAddr] = await findCoveragePoolPda(request.params.hostname);
+        const poolAddrStr = poolAddr as string;
+
+        const poolBytes = await kitFetchAccountBytes(client, poolAddrStr);
+        if (!poolBytes) {
+          return reply.code(404).send({ error: "Pool not found" });
+        }
+        const pool = decodeCoveragePool(poolBytes);
+
+        // UnderwriterPosition: `pool` field at offset 8 (disc:1 + pad:7).
+        const positionAccounts = await kitGetProgramAccounts(client, [
+          {
+            memcmp: {
+              offset: 0,
+              bytes: Buffer.from([UNDERWRITER_POSITION_DISCRIMINATOR]).toString("base64"),
+              encoding: "base64",
+            },
+          },
+          {
+            memcmp: {
+              offset: 8,
+              bytes: poolAddrStr,
+              encoding: "base58",
+            },
+          },
         ]);
+
+        const positions = positionAccounts.flatMap((acct) => {
+          try {
+            const pos = decodeUnderwriterPosition(acct.data);
+            return [{
+              underwriter: pos.underwriter as string,
+              deposited: pos.deposited.toString(),
+              earnedPremiums: pos.earnedPremiums.toString(),
+              depositTimestamp: pos.depositTimestamp.toString(),
+            }];
+          } catch {
+            return [];
+          }
+        });
+
         const claimsResult = await query<ClaimRow>(
           `SELECT c.id, c.call_record_id, c.agent_id, c.trigger_type,
                   c.refund_amount, c.tx_hash, c.settlement_slot, c.created_at
@@ -104,9 +168,10 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
            ORDER BY c.created_at DESC LIMIT 50`,
           [request.params.hostname],
         );
+
         return reply.send({
           pool: {
-            hostname: pool.providerHostname,
+            hostname: getCoveragePoolHostname(pool),
             totalDeposited: pool.totalDeposited.toString(),
             totalAvailable: pool.totalAvailable.toString(),
             totalPremiumsEarned: pool.totalPremiumsEarned.toString(),
@@ -115,13 +180,7 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
             activePolicies: pool.activePolicies,
             payoutsThisWindow: pool.payoutsThisWindow.toString(),
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          positions: positions.map((p: any) => ({
-            underwriter: p.account.underwriter.toString(),
-            deposited: p.account.deposited.toString(),
-            earnedPremiums: p.account.earnedPremiums.toString(),
-            depositTimestamp: p.account.depositTimestamp.toString(),
-          })),
+          positions,
           recentClaims: claimsResult.rows,
         });
       } catch (err) {
@@ -134,9 +193,6 @@ export async function poolsRoute(app: FastifyInstance): Promise<void> {
 
 export function __resetPoolCacheForTests(): void { poolListCache = null; }
 
-// Exported for tests that want to introspect cache state. If programId is
-// provided, only returns the timestamp when the cached entry matches that
-// programId — otherwise returns "any cached" timestamp (or null if unset).
 export function __getPoolCacheTimestampForTests(programId?: string): number | null {
   if (!poolListCache) return null;
   if (programId !== undefined && poolListCache.programId !== programId) return null;

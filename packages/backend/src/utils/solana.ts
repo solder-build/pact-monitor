@@ -5,6 +5,18 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import bs58 from "bs58";
 import { createHash } from "crypto";
+import {
+  createSolanaRpc,
+  createSolanaRpcSubscriptions,
+  createKeyPairSignerFromBytes,
+  address,
+  type Address,
+  type Rpc,
+  type RpcSubscriptions,
+  type SolanaRpcApi,
+  type SolanaRpcSubscriptionsApi,
+  type KeyPairSigner,
+} from "@solana/kit";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -108,6 +120,33 @@ export function createSolanaClient(config: SolanaConfig) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const program = new Program(idl as any, provider);
   return { connection, provider, program, oracleKeypair, programId };
+}
+
+export interface KitSolanaClient {
+  rpc: Rpc<SolanaRpcApi>;
+  rpcSubscriptions: RpcSubscriptions<SolanaRpcSubscriptionsApi>;
+  oracleSigner: KeyPairSigner;
+  programAddress: Address;
+  oracleKeypair: Keypair;
+}
+
+// Kit-based client for Pinocchio/Codama account reads and instruction sends.
+// This is the default transport post-WP-17; the Anchor client above is
+// retained as a legacy fallback for the existing test suite.
+export async function createKitSolanaClient(config: SolanaConfig): Promise<KitSolanaClient> {
+  const oracleKeypair = loadOracleKeypair(config);
+  const rpcUrl = config.rpcUrl;
+  const wsUrl = rpcUrl.replace(/^https?/, (m) => (m === "https" ? "wss" : "ws"));
+  const rpc = createSolanaRpc(rpcUrl);
+  const rpcSubscriptions = createSolanaRpcSubscriptions(wsUrl);
+  const oracleSigner = await createKeyPairSignerFromBytes(oracleKeypair.secretKey);
+  return {
+    rpc,
+    rpcSubscriptions,
+    oracleSigner,
+    programAddress: address(config.programId),
+    oracleKeypair,
+  };
 }
 
 export function deriveProtocolPda(programId: PublicKey): [PublicKey, number] {

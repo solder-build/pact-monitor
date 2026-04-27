@@ -11,7 +11,7 @@
   "dependencies": {
     "@pact-network/monitor": "workspace:*",
     "@pact-network/insurance": "workspace:*",
-    "@anchor-lang/core": "^1.0.0",
+    "@solana/kit": "^6.8.0",
     "@solana/web3.js": "^1.98.4",
     "@solana/spl-token": "^0.4.14",
     "bn.js": "^5.2.3",

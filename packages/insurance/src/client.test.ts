@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Keypair } from "@solana/web3.js";
 import { PactInsurance } from "./client.js";
-import { createAnchorClient } from "./anchor-client.js";
+import { createAnchorClient } from "./legacy-anchor-client.js";
 
 describe("createAnchorClient programId override", () => {
   it("uses opts.programId rather than the address embedded in the bundled IDL", () => {

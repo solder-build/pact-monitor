@@ -15,10 +15,12 @@ Pact Network is a parametric micro-insurance system for AI agent API payments on
 ```
 packages/
   monitor/    — @pact-network/monitor: TypeScript SDK wrapping fetch() to monitor API reliability
-  insurance/  — @pact-network/insurance: TypeScript SDK for the on-chain Anchor insurance program
+  insurance/  — @pact-network/insurance: TypeScript SDK for the on-chain insurance program (Codama + @solana/kit transport as of WP-17)
   backend/    — @pact-network/backend: Fastify API server aggregating monitoring data
   scorecard/  — @pact-network/scorecard: Vite+React dashboard showing provider reliability rankings
-  program/    — Anchor program (pact_insurance)
+  program/    — On-chain programs (two crates, see below)
+    programs-pinocchio/pact-insurance-pinocchio/  — PRIMARY: Pinocchio 0.10 crate (default build + deploy target as of WP-17)
+    programs/pact-insurance/                      — LEGACY: Anchor 1.0 crate (rollback fallback only; do not modify)
 deploy/       — Docker Compose + Caddyfile
 docs/         — PRD, design spec, implementation plan
 samples/      — Sample agent integrations and demos
@@ -78,7 +80,7 @@ cd packages/backend && npm run generate-key <label>
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **pact-network** (884 symbols, 1722 relationships, 40 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **pact-network** (1604 symbols, 3332 relationships, 125 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

@@ -1,0 +1,46 @@
+[package]
+name = "pact-insurance-pinocchio"
+version = "0.1.0"
+description = "Pact Network on-chain parametric insurance (Pinocchio port, scaffolding)"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "pact_insurance_pinocchio"
+
+[features]
+default = []
+bpf-entrypoint = []
+# When enabled, `initialize_protocol` requires the transaction-level deployer
+# signer to match the baked-in `DEPLOYER_PUBKEY`. Left OFF by default so that
+# `cargo test` / localnet integration tests can initialize with an arbitrary
+# payer. The mainnet / devnet build must enable this feature.
+enforce-deployer = []
+
+[dependencies]
+# `cpi` feature exposes `pinocchio::cpi::{invoke_signed, Seed, Signer}` — used
+# by `initialize_protocol` (WP-5) to hand-roll the System Program `CreateAccount`
+# invocation. No `pinocchio-system` dep: version 0.4 wants pinocchio 0.9 and
+# 0.6 wants pinocchio 0.11, neither compatible with our pinned 0.10.
+pinocchio = { version = "0.10", features = ["cpi"] }
+bytemuck = { version = "1.14", features = ["derive"] }
+# WP-15 `submit_claim` hashes `args.call_id` (SHA-256) to derive the claim PDA's
+# third seed. `default-features = false` keeps `sha2` no-std so it compiles on
+# the SBF target. Matches the Anchor source dep exactly
+# (`packages/program/programs/pact-insurance/Cargo.toml`). If this ever fails
+# to link on SBF, the fallback is `solana_program::hash::hashv` per spec §8.12.
+sha2 = { version = "0.10", default-features = false }
+
+# SBF target: PDA derivation resolves to a syscall; no extra feature needed.
+# `copy` is required so `Address` implements `Copy` (WP-3 state structs
+# need `#[derive(Copy)]` for bytemuck::Pod).
+[target.'cfg(any(target_os = "solana", target_arch = "bpf"))'.dependencies]
+solana-address = { version = "2", features = ["decode", "copy"] }
+
+# Host target: `solana_address::Address::find_program_address` is gated on
+# the `curve25519` feature for non-SBF builds (`cargo test`, `cargo check`).
+[target.'cfg(not(any(target_os = "solana", target_arch = "bpf")))'.dependencies]
+solana-address = { version = "2", features = ["decode", "curve25519", "copy"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

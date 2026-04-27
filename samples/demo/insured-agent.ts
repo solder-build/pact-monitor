@@ -52,10 +52,21 @@ import {
   getMint,
   mintToChecked,
 } from "@solana/spl-token";
-import * as anchor from "@anchor-lang/core";
-import { Program } from "@anchor-lang/core";
+import { createSolanaRpc } from "@solana/kit";
 import { pactMonitor } from "@pact-network/monitor";
-import { PactInsurance } from "@pact-network/insurance";
+import {
+  PactInsurance,
+  generated,
+} from "@pact-network/insurance";
+
+const {
+  PACT_INSURANCE_PROGRAM_ADDRESS,
+  findProtocolConfigPda,
+  findCoveragePoolPda,
+  findCoveragePoolVaultPda,
+  decodeProtocolConfig,
+  decodeCoveragePool,
+} = generated;
 
 // -------- config --------
 
@@ -70,7 +81,7 @@ const INITIAL_USDC = 20_000_000n; // agent starts with 20 USDC in wallet (in lam
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 const PROGRAM_ID = new PublicKey(
-  process.env.SOLANA_PROGRAM_ID || "2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3",
+  process.env.SOLANA_PROGRAM_ID || PACT_INSURANCE_PROGRAM_ADDRESS,
 );
 const BACKEND_URL = process.env.PACT_BACKEND_URL || "http://localhost:3001";
 // Admin token for provisioning an API key at demo start. Matches ADMIN_TOKEN
@@ -172,6 +183,17 @@ async function ensureApiKey(agentPubkey: string): Promise<string> {
   return body.apiKey;
 }
 
+async function fetchAccountBytes(
+  rpc: ReturnType<typeof createSolanaRpc>,
+  address: string,
+): Promise<Uint8Array | null> {
+  const result = await (rpc as any)
+    .getAccountInfo(address, { encoding: "base64" })
+    .send();
+  if (!result.value) return null;
+  return new Uint8Array(Buffer.from(result.value.data[0] as string, "base64"));
+}
+
 // NOTE: no ensureProviderRow helper. The backend's findOrCreateProvider
 // (in src/routes/records.ts) creates the providers row automatically when
 // the SDK POSTs its first record, and respects any pretty name/category
@@ -195,32 +217,13 @@ async function main() {
   log("init", `Oracle:  ${oracle.publicKey.toBase58()}`);
 
   const connection = new Connection(RPC_URL, "confirmed");
-  const walletForProvider = new (anchor as any).Wallet(oracle);
-  const provider = new (anchor as any).AnchorProvider(connection, walletForProvider, {
-    commitment: "confirmed",
-  });
+  const rpc = createSolanaRpc(RPC_URL);
 
-  const idlPath = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../packages/program/target/idl/pact_insurance.json",
-  );
-  const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
-  const program = new (Program as any)(idl, provider);
+  const [protocolPda] = await findProtocolConfigPda();
+  const [poolPda] = await findCoveragePoolPda(HOSTNAME);
+  const [vaultPda] = await findCoveragePoolVaultPda(poolPda);
 
-  const [protocolPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("protocol")],
-    PROGRAM_ID,
-  );
-  const [poolPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("pool"), Buffer.from(HOSTNAME)],
-    PROGRAM_ID,
-  );
-  const [vaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("vault"), poolPda.toBuffer()],
-    PROGRAM_ID,
-  );
-
-  const poolAcc = await connection.getAccountInfo(poolPda);
+  const poolAcc = await connection.getAccountInfo(new PublicKey(poolPda as string));
   if (!poolAcc) {
     console.error(
       `[FAIL] no pool exists for hostname="${HOSTNAME}". Run:\n` +
@@ -229,8 +232,13 @@ async function main() {
     process.exit(1);
   }
 
-  const config: any = await program.account.protocolConfig.fetch(protocolPda);
-  const usdcMint: PublicKey = config.usdcMint;
+  const configBytes = await fetchAccountBytes(rpc, protocolPda as string);
+  if (!configBytes) {
+    console.error("[FAIL] protocol config account not found");
+    process.exit(1);
+  }
+  const config = decodeProtocolConfig(configBytes);
+  const usdcMint = new PublicKey(config.usdcMint as string);
 
   const mintInfo = await getMint(connection, usdcMint);
   if (!mintInfo.mintAuthority || !mintInfo.mintAuthority.equals(phantom.publicKey)) {
@@ -239,12 +247,17 @@ async function main() {
   }
 
   // Pool state BEFORE
-  const poolBefore: any = await program.account.coveragePool.fetch(poolPda);
+  const poolBytesBefore = await fetchAccountBytes(rpc, poolPda as string);
+  if (!poolBytesBefore) {
+    console.error("[FAIL] coverage pool account not found");
+    process.exit(1);
+  }
+  const poolBefore = decodeCoveragePool(poolBytesBefore);
   log(
     "pool.before",
-    `total_available=${formatUsdc(BigInt(poolBefore.totalAvailable.toString()))} ` +
-      `premiums_earned=${formatUsdc(BigInt(poolBefore.totalPremiumsEarned.toString()))} ` +
-      `claims_paid=${formatUsdc(BigInt(poolBefore.totalClaimsPaid.toString()))} ` +
+    `total_available=${formatUsdc(poolBefore.totalAvailable)} ` +
+      `premiums_earned=${formatUsdc(poolBefore.totalPremiumsEarned)} ` +
+      `claims_paid=${formatUsdc(poolBefore.totalClaimsPaid)} ` +
       `rate=${poolBefore.insuranceRateBps}bps ` +
       `active_policies=${poolBefore.activePolicies}`,
   );
@@ -357,11 +370,14 @@ async function main() {
 
   // -------- verify --------
   const agentAfter = await getAccount(connection, agentAta);
-  const poolAfter: any = await program.account.coveragePool.fetch(poolPda);
+  const poolBytesAfter = await fetchAccountBytes(rpc, poolPda as string);
+  if (!poolBytesAfter) {
+    console.error("[FAIL] coverage pool account not found after run");
+    process.exit(1);
+  }
+  const poolAfter = decodeCoveragePool(poolBytesAfter);
 
-  const claimsPaidDelta =
-    BigInt(poolAfter.totalClaimsPaid.toString()) -
-    BigInt(poolBefore.totalClaimsPaid.toString());
+  const claimsPaidDelta = poolAfter.totalClaimsPaid - poolBefore.totalClaimsPaid;
 
   console.log("");
   console.log("=== Results ===");
@@ -369,9 +385,9 @@ async function main() {
   log("agent", `delegated:        ${formatUsdc(agentAfter.delegatedAmount)}`);
   log(
     "pool.after",
-    `total_available=${formatUsdc(BigInt(poolAfter.totalAvailable.toString()))} ` +
-      `premiums_earned=${formatUsdc(BigInt(poolAfter.totalPremiumsEarned.toString()))} ` +
-      `claims_paid=${formatUsdc(BigInt(poolAfter.totalClaimsPaid.toString()))} ` +
+    `total_available=${formatUsdc(poolAfter.totalAvailable)} ` +
+      `premiums_earned=${formatUsdc(poolAfter.totalPremiumsEarned)} ` +
+      `claims_paid=${formatUsdc(poolAfter.totalClaimsPaid)} ` +
       `rate=${poolAfter.insuranceRateBps}bps`,
   );
   log("delta", `pool claims_paid: +${formatUsdc(claimsPaidDelta)}`);
@@ -390,6 +406,9 @@ async function main() {
   console.log(
     `  https://explorer.solana.com/address/${agent.publicKey.toBase58()}?cluster=devnet`,
   );
+
+  // suppress unused-var warning — vaultPda is derived for documentation clarity
+  void vaultPda;
 }
 
 main().catch((err) => {

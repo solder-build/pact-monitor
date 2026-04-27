@@ -15,13 +15,13 @@ import * as os from "os";
 import * as path from "path";
 import { Keypair } from "@solana/web3.js";
 import { pactMonitor } from "@pact-network/monitor";
-import { PactInsurance } from "@pact-network/insurance";
+import { PactInsurance, generated } from "@pact-network/insurance";
 
 const HOSTNAME = process.argv[2] || "api.coingecko.com";
 const URL = `https://${HOSTNAME}/api/v3/simple/price?ids=solana&vs_currencies=usd`;
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 const PROGRAM_ID =
-  process.env.SOLANA_PROGRAM_ID || "2Go74eCvY8vCco3WPuteGzrhKz8v3R7Pcp5tjuFpcmN3";
+  process.env.SOLANA_PROGRAM_ID || generated.PACT_INSURANCE_PROGRAM_ADDRESS;
 const BACKEND_URL = process.env.PACT_BACKEND_URL || "http://localhost:3001";
 const KEYPAIR_PATH =
   process.env.PACT_AGENT_KEYPAIR_PATH ||
