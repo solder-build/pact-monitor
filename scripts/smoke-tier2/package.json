@@ -5,26 +5,26 @@
   "type": "module",
   "description": "Tier-2 surfpool e2e smoke harness — see README.md",
   "scripts": {
-    "00-setup":     "tsx 00-setup.ts",
-    "02-init":      "tsx 02-init-protocol.ts",
-    "03-fund":      "tsx 03-fund-agents.ts",
-    "04c-seed":     "tsx 04c-seed-indexer.ts",
-    "05-fire":      "tsx 05-fire-50-calls.ts",
+    "00-setup": "tsx 00-setup.ts",
+    "02-init": "tsx 02-init-protocol.ts",
+    "03-fund": "tsx 03-fund-agents.ts",
+    "04c-seed": "tsx 04c-seed-indexer.ts",
+    "05-fire": "tsx 05-fire-50-calls.ts",
     "06-reconcile": "tsx 06-reconcile.ts",
-    "07-pause":     "tsx 07-pause-roundtrip.ts",
-    "stop":         "bash 04b-stop-stack.sh"
+    "07-pause": "tsx 07-pause-roundtrip.ts",
+    "stop": "bash 04b-stop-stack.sh"
   },
   "dependencies": {
-    "@google-cloud/pubsub": "^4.0.0",
+    "@google-cloud/pubsub": "^4.11.0",
     "@q3labs/pact-protocol-v1-client": "workspace:*",
-    "@solana/web3.js": "^1.95.0",
+    "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",
-    "pg": "^8.13.0"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/pg": "^8.11.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.3"
+    "@types/node": "^22.20.1",
+    "@types/pg": "^8.21.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3"
   }
 }

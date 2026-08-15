@@ -22,6 +22,11 @@ The repo is a workspace, so entries are grouped by package where it helps. Works
 - `"./package.json"` subpath in the `exports` map of both `@q3labs/pact-sdk` and `@q3labs/pact-protocol-v1-client`. Lets build tooling read the package version programmatically (`require("@q3labs/pact-sdk/package.json")`) — previously threw `ERR_PACKAGE_PATH_NOT_EXPORTED`. Surfaced by the post-publish external smoke against the live `0.1.0` install.
 - README + skill note on `pact.stats()` returning `bigint` counters. Naive `JSON.stringify(pact.stats())` throws `TypeError: Do not know how to serialize a BigInt`; both docs now show the replacer pattern. Also surfaced by the post-publish smoke.
 
+### Changed
+
+- **Workspace: npm dependencies refreshed across all 20 packages.** `pnpm update -r` — in-range (semver-respecting) bumps plus a `pnpm-lock.yaml` refresh. No major versions were crossed. Notable floors moved: `typescript` 5.7/5.8 → 5.9.3, `viem` 2.21/2.48 → 2.55.16, `fastify` 5.3 → 5.12, `pg` 8.13/8.16 → 8.23, `next` 15.3 → 15.5.23, `react`/`react-dom` 19.0 → 19.2.8, `turbo` 2.3 → 2.10.10, `@nestjs/*` 10.4.0 → 10.4.22, `hono` 4.7 → 4.13.2, `tsx` 4.19 → 4.23.12. Build stays 18/18 green; indexer 170/170; all other suites 21/21.
+- **Workspace: `rpc-websockets` pinned to `9.3.8` via `pnpm.overrides`.** `9.3.9` is a *patch* release that swapped its `uuid` dependency from `^11` to `^14`. `uuid@14` is ESM-only (`"type": "module"`, no `main`, no CJS `exports.require`), and the indexer's Jest runner is CJS, so every suite that transitively loads `@solana/web3.js` → `rpc-websockets` → `uuid` died with `SyntaxError: Unexpected token 'export'` — 7 of 22 indexer suites, 49 tests unrunnable. Pinning restores `uuid@11` (which ships CJS) and returns the indexer to 22/22 suites, 170/170 tests. Lift this pin only once the indexer can run ESM under Jest (or moves off Jest).
+
 ## 2026-05-20 — SDK 0.1.0 release
 
 This is the first public release of the Pact Network agent SDK. The release PR (`develop` → `main`) is [#212](https://github.com/pactnetwork/pact-monitor/pull/212); on merge, `publish-sdk.yaml` publishes both packages to npm.

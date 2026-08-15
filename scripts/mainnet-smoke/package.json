@@ -5,18 +5,18 @@
   "type": "module",
   "description": "Real-mainnet 10-call smoke harness — see README.md",
   "scripts": {
-    "preflight":  "tsx 00-preflight.ts",
-    "fire":       "tsx 01-fire-10-calls.ts",
-    "reconcile":  "tsx 02-reconcile.ts"
+    "preflight": "tsx 00-preflight.ts",
+    "fire": "tsx 01-fire-10-calls.ts",
+    "reconcile": "tsx 02-reconcile.ts"
   },
   "dependencies": {
     "@q3labs/pact-protocol-v1-client": "workspace:*",
-    "@solana/web3.js": "^1.95.8",
-    "axios": "^1.7.9",
-    "tsx": "^4.19.2"
+    "@solana/web3.js": "^1.98.4",
+    "axios": "^1.19.0",
+    "tsx": "^4.23.12"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
-    "typescript": "^5.7.2"
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
   }
 }

@@ -11,28 +11,28 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@google-cloud/pubsub": "^4.9.0",
-    "@hono/node-server": "^1.13.7",
+    "@google-cloud/pubsub": "^4.11.0",
+    "@hono/node-server": "^1.19.17",
     "@pact-network/protocol-evm-v1-client": "workspace:*",
     "@pact-network/shared": "workspace:*",
     "@pact-network/wrap": "workspace:*",
-    "@solana/spl-token": "^0.4.14",
+    "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",
-    "dotenv": "^16.4.7",
-    "hono": "^4.7.0",
-    "ioredis": "^5.4.1",
-    "lru-cache": "^11.0.2",
-    "pg": "^8.13.3",
+    "dotenv": "^16.6.1",
+    "hono": "^4.13.2",
+    "ioredis": "^5.11.1",
+    "lru-cache": "^11.5.2",
+    "pg": "^8.23.0",
     "tweetnacl": "^1.0.3",
-    "viem": "^2.48.8",
-    "zod": "^3.24.2"
+    "viem": "^2.55.16",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^22.15.3",
-    "@types/pg": "^8.11.13",
-    "tsx": "^4.19.3",
-    "typescript": "^5.7.3",
-    "vitest": "^2.1.0"
+    "@types/node": "^22.20.1",
+    "@types/pg": "^8.21.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
   }
 }
