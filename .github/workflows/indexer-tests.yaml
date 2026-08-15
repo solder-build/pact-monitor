@@ -1,0 +1,107 @@
+name: Indexer tests
+
+# migration-rollback.spec.ts (WP-MN-03a T3) hits a real Postgres — this job
+# must run against an actual database so composite-PK and backfill tests catch
+# real migration regressions. All other specs mock PrismaService via jest.fn(),
+# so they are fast and do not add connection latency.
+#
+# Triggers on PRs to develop/main when indexer or db files change, and on all
+# feat/fix/chore pushes (same push policy as backend-tests.yaml).
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+    paths:
+      - "packages/indexer/**"
+      - "packages/db/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/indexer-tests.yaml"
+  push:
+    branches:
+      - develop
+      - "feat/**"
+      - "fix/**"
+      - "chore/**"
+
+concurrency:
+  group: indexer-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Indexer test suite (Postgres 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pact
+          POSTGRES_PASSWORD: pact
+          POSTGRES_DB: pact
+        ports:
+          # Matches docker-compose.dev.yml and backend-tests.yaml so DATABASE_URL
+          # strings are consistent across dev and CI.
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U pact"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      # PG_URL is what the Prisma schema datasource reads (env("PG_URL")).
+      # DATABASE_URL is the fallback the migration-rollback spec reads.
+      PG_URL: postgresql://pact:pact@localhost:5433/pact
+      DATABASE_URL: postgresql://pact:pact@localhost:5433/pact
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace deps
+        # Builds all transitive workspace dependencies of the indexer in the
+        # correct topological order via turbo:
+        #   @pact-network/classifier
+        #   @pact-network/wrap  (needs classifier)
+        #   @pact-network/protocol-evm-v1-client
+        #   @pact-network/shared  (needs wrap + protocol-evm-v1-client)
+        #   @q3labs/pact-protocol-v1-client  (needs wrap + protocol-evm-v1-client)
+        #   @pact-network/db  (prisma generate + tsc — produces generated client types)
+        # The indexer's jest moduleNameMapper points at the built dist files of
+        # protocol-v1-client and shared, and at db/src/index.ts (which re-exports
+        # from the generated @prisma/client). All six must be present before jest.
+        run: pnpm turbo run build --filter='@pact-network/indexer^...'
+
+      - name: Apply Prisma migrations
+        # Runs `prisma migrate deploy` against the CI postgres. Required by
+        # migration-rollback.spec.ts (WP-MN-03a T3), which inserts real rows and
+        # asserts composite-PK + backfill behavior across all seven migrations.
+        run: pnpm --filter @pact-network/db run db:migrate
+
+      - name: Run indexer test suite
+        run: pnpm --filter @pact-network/indexer test
