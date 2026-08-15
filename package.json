@@ -23,6 +23,11 @@
     "db:reset": "docker compose -f docker-compose.dev.yml down -v && docker compose -f docker-compose.dev.yml up -d"
   },
   "devDependencies": {
-    "turbo": "^2.3.0"
+    "turbo": "^2.10.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "rpc-websockets": "9.3.8"
+    }
   }
 }

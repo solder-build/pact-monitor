@@ -18,15 +18,15 @@
   },
   "dependencies": {
     "@pact-network/protocol-evm-v1-client": "workspace:*",
-    "@q3labs/pact-protocol-v1-client": "workspace:*",
     "@pact-network/wrap": "workspace:*",
-    "@solana/spl-token": "^0.4.14",
-    "@solana/web3.js": "^1.95.8",
-    "viem": "^2.21.0"
+    "@q3labs/pact-protocol-v1-client": "workspace:*",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.98.4",
+    "viem": "^2.55.16"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.4"
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }

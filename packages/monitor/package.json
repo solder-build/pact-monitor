@@ -42,9 +42,9 @@
   },
   "devDependencies": {
     "@solana/web3.js": "^1.98.4",
-    "@types/node": "^25.6.0",
-    "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "@types/node": "^25.9.5",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@pact-network/classifier": "workspace:*",
