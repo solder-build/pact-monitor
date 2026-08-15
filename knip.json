@@ -1,0 +1,150 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+
+  "ignore": [
+    ".claude/**",
+    ".planning/**",
+    "docs/**",
+    "packages/program/**",
+    "**/dist/**",
+    "**/.next/**",
+    "**/out/**",
+    "**/target/**"
+  ],
+
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/*.ts",
+        "scripts/*.mjs",
+        "samples/agent-integration/**/*.ts"
+      ]
+    },
+    "packages/backend": {
+      "entry": [
+        "src/index.ts",
+        "src/scripts/**/*.ts",
+        "migrations/**/*.ts",
+        "**/*.test.ts"
+      ]
+    },
+    "packages/classifier": {
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts"
+      ]
+    },
+    "packages/cli": {
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.ts",
+        "**/*.test.ts"
+      ]
+    },
+    "packages/db": {
+      "entry": [
+        "src/index.ts",
+        "seeds/**/*.ts"
+      ]
+    },
+    "packages/dummy-upstream": {
+      "entry": [
+        "src/index.ts",
+        "src/app.ts",
+        "api/index.ts"
+      ]
+    },
+    "packages/facilitator": {
+      "entry": ["src/index.ts"]
+    },
+    "packages/indexer": {
+      "entry": [
+        "src/main.ts",
+        "test/**/*.ts"
+      ]
+    },
+    "packages/insurance": {
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.ts"
+      ]
+    },
+    "packages/market-dashboard": {
+      "entry": [
+        "app/**/*.{ts,tsx}",
+        "components/**/*.{ts,tsx}",
+        "lib/**/*.{ts,tsx}",
+        "vitest.setup.ts",
+        "next.config.ts",
+        "tailwind.config.ts",
+        "postcss.config.mjs"
+      ]
+    },
+    "packages/market-proxy": {
+      "entry": ["src/index.ts"]
+    },
+    "packages/monitor": {
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.ts"
+      ]
+    },
+    "packages/protocol-evm-v1-client": {
+      "entry": [
+        "src/index.ts",
+        "scripts/**/*.{ts,mjs}",
+        "__tests__/**/*.test.ts"
+      ]
+    },
+    "packages/protocol-v1-client": {
+      "entry": [
+        "src/index.ts",
+        "__tests__/**/*.test.ts"
+      ]
+    },
+    "packages/scorecard": {
+      "entry": ["src/main.tsx"]
+    },
+    "packages/sdk": {
+      "entry": [
+        "src/index.ts",
+        "src/__tests__/**/*.test.ts"
+      ]
+    },
+    "packages/settler": {
+      "entry": [
+        "src/main.ts",
+        "src/test-setup.ts",
+        "test/**/*.spec.ts",
+        "src/**/*.spec.ts"
+      ]
+    },
+    "packages/shared": {
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts"
+      ]
+    },
+    "packages/wrap": {
+      "entry": [
+        "src/index.ts",
+        "src/__tests__/**/*.test.ts"
+      ]
+    },
+    "samples/demo": {
+      "entry": ["**/*.ts"]
+    },
+    "scripts/devnet": {
+      "entry": ["**/*.ts"]
+    },
+    "scripts/mainnet": {
+      "entry": ["**/*.ts"]
+    },
+    "scripts/mainnet-smoke": {
+      "entry": ["**/*.ts"]
+    },
+    "scripts/smoke-tier2": {
+      "entry": ["**/*.ts", "**/*.mjs"]
+    }
+  }
+}
