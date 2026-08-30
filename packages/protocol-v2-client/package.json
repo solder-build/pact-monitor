@@ -1,0 +1,37 @@
+{
+  "name": "@q3labs/pact-protocol-v2-client",
+  "version": "0.1.0",
+  "description": "TypeScript client for pact-network-v2-pinocchio (parametric/oracle insurance program — PDA derivers, account decoders, instruction builders).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0",
+    "@solana/web3.js": "^1.95.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^3.0.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.4"
+  }
+}

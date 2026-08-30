@@ -1,0 +1,244 @@
+// V2 off-chain schema.
+//
+// Authoritative-source split (Locked decision §Architecture in
+// `docs/plans/v2-off-chain.md` / plan file):
+//
+//   * Watcher path owns: V2ProtocolConfig, V2Pool, V2Position, V2Policy
+//     (state read from on-chain truth; written with last-write-wins on `slot`).
+//   * /events path owns: V2PremiumSettlement, V2Claim ledger rows; agent
+//     upsert for FK consistency. NOTE: /events handlers MUST NOT bump
+//     counter fields on V2Pool / V2Policy — those belong to the watcher.
+//   * Cranker idempotency: V2PremiumAttempt keyed by raw callId.
+//
+// Field names mirror `@q3labs/pact-protocol-v2-client/src/state.ts` decoder
+// output where possible. On-chain unix-second timestamps are stored as
+// `BigInt` with the `OnChain` suffix; DB-side bookkeeping uses `DateTime`.
+
+generator client {
+  provider = "prisma-client-js"
+  // Custom output keeps the V2 client isolated from the v1 @pact-network/db
+  // client. Both packages use prisma-client-js; with no distinct output they
+  // race to the shared node_modules/@prisma/client and clobber each other's
+  // models in a parallel `turbo build` — the cold-build failure this fixes.
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PG_V2_URL")
+}
+
+enum V2ClaimStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+enum V2TriggerType {
+  Timeout
+  Error
+  SchemaMismatch
+  LatencySla
+}
+
+enum V2PremiumAttemptStatus {
+  Pending
+  Confirmed
+  Failed
+}
+
+// ProtocolConfig — singleton account per program. `slot` is the last on-chain
+// slot the watcher observed; an update with `slot <= existing` is dropped.
+model V2ProtocolConfig {
+  configPda                 String   @id @db.VarChar(44)
+  authority                 String   @db.VarChar(44)
+  oracle                    String   @db.VarChar(44)
+  treasury                  String   @db.VarChar(44)
+  usdcMint                  String   @db.VarChar(44)
+  minPoolDeposit            BigInt
+  defaultMaxCoveragePerCall BigInt
+  withdrawalCooldownSeconds BigInt
+  aggregateCapWindowSeconds BigInt
+  claimWindowSeconds        BigInt
+  protocolFeeBps            Int
+  defaultInsuranceRateBps   Int
+  minPremiumBps             Int
+  aggregateCapBps           Int
+  maxClaimsPerBatch         Int
+  paused                    Boolean  @default(false)
+  bump                      Int
+  slot                      BigInt   @default(0)
+  ingestedAt                DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+// CoveragePool — one row per provider hostname. Watcher-owned counters
+// (totalDeposited, totalAvailable, totalPremiumsEarned, totalClaimsPaid,
+// payoutsThisWindow, windowStart, activePolicies). Hostname is unique
+// because the program enforces `(programId, "pool", hostname)` PDA seeds.
+model V2Pool {
+  poolPda             String       @id @db.VarChar(44)
+  authority           String       @db.VarChar(44)
+  usdcMint            String       @db.VarChar(44)
+  vault               String       @db.VarChar(44)
+  providerHostname    String       @unique @db.VarChar(64)
+  totalDeposited      BigInt       @default(0)
+  totalAvailable      BigInt       @default(0)
+  totalPremiumsEarned BigInt       @default(0)
+  totalClaimsPaid     BigInt       @default(0)
+  maxCoveragePerCall  BigInt
+  payoutsThisWindow   BigInt       @default(0)
+  windowStart         BigInt       @default(0)
+  createdAtOnChain    BigInt
+  updatedAtOnChain    BigInt
+  activePolicies      Int          @default(0)
+  insuranceRateBps    Int
+  minPremiumBps       Int
+  bump                Int
+  vaultBump           Int
+  slot                BigInt       @default(0)
+  ingestedAt          DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  positions           V2Position[]
+  policies            V2Policy[]
+}
+
+// UnderwriterPosition — deposit + earnings tracking per (pool, underwriter).
+// Watcher-owned end-to-end.
+model V2Position {
+  positionPda        String   @id @db.VarChar(44)
+  pool               String   @db.VarChar(44)
+  poolRef            V2Pool   @relation(fields: [pool], references: [poolPda])
+  underwriter        String   @db.VarChar(44)
+  deposited          BigInt   @default(0)
+  earnedPremiums     BigInt   @default(0)
+  lossesAbsorbed     BigInt   @default(0)
+  depositTimestamp   BigInt
+  lastClaimTimestamp BigInt
+  bump               Int
+  slot               BigInt   @default(0)
+  ingestedAt         DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([underwriter])
+  @@index([pool])
+}
+
+// Policy — per (pool, agent) insurance contract. Watcher-owned counters.
+// `referrer` is nullable (Phase 5 F1: null when `referrerPresent = false`).
+model V2Policy {
+  policyPda           String                @id @db.VarChar(44)
+  agent               String                @db.VarChar(44)
+  pool                String                @db.VarChar(44)
+  poolRef             V2Pool                @relation(fields: [pool], references: [poolPda])
+  agentTokenAccount   String                @db.VarChar(44)
+  agentId             String                @db.VarChar(64)
+  totalPremiumsPaid   BigInt                @default(0)
+  totalClaimsReceived BigInt                @default(0)
+  callsCovered        BigInt                @default(0)
+  createdAtOnChain    BigInt
+  expiresAt           BigInt
+  active              Boolean               @default(true)
+  bump                Int
+  referrer            String?               @db.VarChar(44)
+  referrerShareBps    Int                   @default(0)
+  referrerPresent     Boolean               @default(false)
+  slot                BigInt                @default(0)
+  ingestedAt          DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  claims              V2Claim[]
+  settlements         V2PremiumSettlement[]
+
+  @@unique([pool, agent])
+  @@index([agent])
+}
+
+// Claim — one PDA per (policy, sha256(callId)). The on-chain `callId` field
+// is the 32-byte SHA-256 digest itself; DB stores it as 64-char lowercase hex
+// in `callIdHash` (uniform across /events path and watcher path).
+model V2Claim {
+  claimPda         String        @id @db.VarChar(44)
+  policy           String        @db.VarChar(44)
+  policyRef        V2Policy      @relation(fields: [policy], references: [policyPda])
+  pool             String        @db.VarChar(44)
+  agent            String        @db.VarChar(44)
+  callIdHash       String        @unique @db.VarChar(64)
+  evidenceHash     String        @db.VarChar(64)
+  paymentAmount    BigInt
+  refundAmount     BigInt
+  callTimestamp    BigInt
+  createdAtOnChain BigInt
+  resolvedAt       BigInt
+  latencyMs        Int
+  statusCode       Int
+  triggerType      V2TriggerType
+  status           V2ClaimStatus
+  bump             Int
+  slot             BigInt        @default(0)
+  ingestedAt       DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([policy, ingestedAt])
+  @@index([agent])
+}
+
+// PremiumSettlement — one row per oracle-submitted `settle_premium` tx.
+// Tx signature is the natural PK; a multi-ix tx contributes N rows sharing
+// the same `signature`. NB: `callId` is the raw pre-hash id (e.g. UUID);
+// `callIdHash` is the sha256 hex (matches Claim.callIdHash if a claim later
+// references the same call).
+model V2PremiumSettlement {
+  id          String   @id @default(uuid())
+  signature   String   @db.VarChar(88)
+  policy      String   @db.VarChar(44)
+  policyRef   V2Policy @relation(fields: [policy], references: [policyPda])
+  callId      String   @db.VarChar(128)
+  callIdHash  String   @db.VarChar(64)
+  callValue   BigInt
+  poolCut     BigInt
+  treasuryCut BigInt
+  referrerCut BigInt   @default(0)
+  settledAt   DateTime
+  ingestedAt  DateTime @default(now())
+
+  @@unique([signature, callId])
+  @@index([policy, settledAt])
+  @@index([signature])
+}
+
+// PremiumAttempt — cranker idempotency ledger. Keyed by raw callId; cranker
+// SELECTs by callId before submit and ack-skips if status=Confirmed.
+model V2PremiumAttempt {
+  callId               String                 @id @db.VarChar(128)
+  lastAttemptSignature String?                @db.VarChar(88)
+  attemptCount         Int                    @default(0)
+  status               V2PremiumAttemptStatus @default(Pending)
+  policyPda            String?                @db.VarChar(44)
+  errorMessage         String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([status])
+}
+
+// Agent — denormalized summary, upserted by /events ingest for FK + the
+// dashboard's agent landing page. Counters DERIVED from settlement/claim
+// rollups, NOT from on-chain truth (the program does not store agent-level
+// counters across pools).
+model V2Agent {
+  pubkey              String   @id @db.VarChar(44)
+  displayName         String?
+  totalPremiumsPaid   BigInt   @default(0)
+  totalClaimsReceived BigInt   @default(0)
+  callsCovered        BigInt   @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// OperatorAllowlist — wallet pubkeys allowed to invoke /api/v2/ops/*.
+// Identical shape to V1 (`packages/db/prisma/schema.prisma:128`).
+model V2OperatorAllowlist {
+  walletPubkey String   @id @db.VarChar(44)
+  addedAt      DateTime @default(now())
+  note         String?
+}

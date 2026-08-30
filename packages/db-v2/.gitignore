@@ -1,0 +1,3 @@
+# Prisma client is generated into the source tree (see prisma/schema.prisma
+# `output`) at build time and copied into dist/. Never commit it.
+/src/generated/

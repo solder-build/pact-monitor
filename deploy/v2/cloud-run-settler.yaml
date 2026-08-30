@@ -1,0 +1,77 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: pact-settler-v2
+  annotations:
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        # min-instances=1 keeps the consumer warm and prevents cold-start
+        # pauses that drop in-flight Pub/Sub work.
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+        # CPU always allocated so the Pub/Sub StreamingPull subscriber
+        # doesn't get suspended between batches.
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+        - image: gcr.io/PROJECT_ID/pact-settler-v2:TAG
+          ports:
+            - containerPort: 8082
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: SOLANA_RPC_URL
+              value: https://api.mainnet-beta.solana.com
+            - name: INDEXER_V2_URL
+              value: https://indexer-v2.pactnetwork.io
+            - name: PROGRAM_ID
+              value: 7i9zJMwaTRw4Tdy7SAfXJdDkYQD39xyKmkBhWuUSgDJU
+            - name: QUEUE_BACKEND
+              value: pubsub
+            - name: PUBSUB_PROJECT
+              value: PROJECT_ID
+            - name: PUBSUB_SUBSCRIPTION_PREMIUM
+              value: pact-v2-premium-sub
+            - name: PUBSUB_SUBSCRIPTION_CLAIM
+              value: pact-v2-claim-sub
+            # Secrets pulled from Secret Manager at boot. The Cloud Run
+            # service account needs roles/secretmanager.secretAccessor
+            # on each referenced secret.
+            - name: ORACLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pact-v2-oracle-key
+                  key: latest
+            - name: INDEXER_V2_PUSH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pact-v2-indexer-push-secret
+                  key: latest
+            - name: PG_V2_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pact-v2-database-url
+                  key: latest
+          # Cloud Run health probes — Nest listens on PORT=8082 but does
+          # not currently expose a /health endpoint. Use TCP probe.
+          startupProbe:
+            tcpSocket:
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+---
+# IAM bindings (apply separately via `gcloud pubsub subscriptions
+# add-iam-policy-binding`):
+#   pact-v2-premium-sub  → roles/pubsub.subscriber  →  serviceAccount:settler-v2@PROJECT_ID.iam
+#   pact-v2-claim-sub    → roles/pubsub.subscriber  →  serviceAccount:settler-v2@PROJECT_ID.iam

@@ -1,0 +1,43 @@
+{
+  "name": "@pact-network/indexer-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "V2 indexer service — ingests settler-v2 events and Helius account-change webhooks, exposes read API + operator ops controller for the V2 dashboard.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "ts-node src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prebuild": "pnpm run clean",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.0",
+    "@nestjs/config": "^3.3.0",
+    "@nestjs/core": "^10.4.0",
+    "@nestjs/platform-express": "^10.4.0",
+    "@pact-network/db-v2": "workspace:*",
+    "@q3labs/pact-protocol-v2-client": "workspace:*",
+    "@solana/web3.js": "^1.95.8",
+    "bs58": "^6.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "tweetnacl": "^1.0.3",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^10.4.0",
+    "@types/node": "^22.0.0",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.0"
+  }
+}

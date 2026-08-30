@@ -1,0 +1,64 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: pact-indexer-v2
+  annotations:
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        # indexer-v2 is HTTP-driven (Helius webhooks + dashboard API).
+        # Allow scale-to-zero; first request will pay a cold start.
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 30
+      containers:
+        - image: gcr.io/PROJECT_ID/pact-indexer-v2:TAG
+          ports:
+            - containerPort: 8083
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PROGRAM_ID
+              value: 7i9zJMwaTRw4Tdy7SAfXJdDkYQD39xyKmkBhWuUSgDJU
+            - name: OPERATOR_NACL_DOMAIN
+              value: pact-network-v2-ops
+            - name: STATS_CACHE_TTL_MS
+              value: "5000"
+            - name: SOLANA_RPC_URL
+              value: https://api.mainnet-beta.solana.com
+            - name: INDEXER_V2_PUSH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pact-v2-indexer-push-secret
+                  key: latest
+            - name: HELIUS_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pact-v2-helius-webhook-secret
+                  key: latest
+            - name: PG_V2_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pact-v2-database-url
+                  key: latest
+          startupProbe:
+            tcpSocket:
+              port: 8083
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 10
+---
+# Helius webhook config: in the Helius dashboard create an
+# "Account Webhook" pointing at https://indexer-v2.pactnetwork.io/webhook/helius/accounts
+# Filter by accountAddresses=[<V2 program ID>] + optional discriminator
+# memcmp; Helius posts an `Authorization: Bearer <HELIUS_WEBHOOK_SECRET>`
+# header on every fire.

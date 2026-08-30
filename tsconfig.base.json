@@ -17,6 +17,8 @@
       "@pact-network/shared/*": ["./packages/shared/src/*"],
       "@pact-network/db": ["./packages/db/src/index.ts"],
       "@pact-network/db/*": ["./packages/db/src/*"],
+      "@pact-network/db-v2": ["./packages/db-v2/src/index.ts"],
+      "@pact-network/db-v2/*": ["./packages/db-v2/src/*"],
       "@pact-network/proxy": ["./packages/proxy/src/index.ts"],
       "@pact-network/proxy/*": ["./packages/proxy/src/*"],
       "@pact-network/settler": ["./packages/settler/src/main.ts"],
@@ -29,6 +31,12 @@
       "@q3labs/pact-protocol-v1-client/*": ["./packages/protocol-v1-client/src/*"],
       "@pact-network/wrap": ["./packages/wrap/src/index.ts"],
       "@pact-network/wrap/*": ["./packages/wrap/src/*"],
+      "@pact-network/wrap-v2": ["./packages/wrap-v2/src/index.ts"],
+      "@pact-network/wrap-v2/*": ["./packages/wrap-v2/src/*"],
+      "@pact-network/settler-v2": ["./packages/settler-v2/src/main.ts"],
+      "@pact-network/settler-v2/*": ["./packages/settler-v2/src/*"],
+      "@pact-network/indexer-v2": ["./packages/indexer-v2/src/main.ts"],
+      "@pact-network/indexer-v2/*": ["./packages/indexer-v2/src/*"],
       "@q3labs/pact-sdk": ["./packages/sdk/src/index.ts"],
       "@q3labs/pact-sdk/*": ["./packages/sdk/src/*"]
     }

@@ -1,0 +1,32 @@
+{
+  "name": "@pact-network/escrow-hold",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PoC: additive hold-in-escrow risk mode for Pact Network. Instead of refunding on a covered failure, hold the premium fan-out in escrow until a verdict, then release-to-fan-out or refund-to-agent. Layers on @pact-network/wrap; does NOT modify the refund path.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "demo": "pnpm --filter @pact-network/wrap build && tsx src/demo/krexa.ts"
+  },
+  "dependencies": {
+    "@pact-network/wrap": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.0"
+  }
+}

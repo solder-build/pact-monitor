@@ -1,0 +1,37 @@
+{
+  "name": "@pact-network/wrap-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "V2 fetch-call wrap library — adapts @pact-network/wrap to V2's per-call settlement contract (callValue * insuranceRateBps / 10000 premium + max_coverage_per_call refund cap).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "@google-cloud/pubsub": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@google-cloud/pubsub": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.0"
+  }
+}
